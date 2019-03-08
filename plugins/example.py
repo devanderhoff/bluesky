@@ -1,7 +1,8 @@
 """ BlueSky plugin template. The text you put here will be visible
     in BlueSky as the description of your plugin. """
 # Import the global bluesky objects. Uncomment the ones you need
-from bluesky import stack  #, settings, navdb, traf, sim, scr, tools
+from bluesky import stack, settings, navdb, traf, sim, scr, tools
+import numpy as np
 
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
@@ -64,8 +65,12 @@ def init_plugin():
 def update():
     stack.stack('ECHO MY_PLUGIN update: creating a random aircraft')
     stack.stack('MCRE 1')
+    stack.stack('hello')
 
 def preupdate():
+    #Create state
+    # state = np.array([traf.lat[0], traf.lon[0], traf.hdg[0]], traf.asas.dist[0])
+    # print(state)
     pass
 
 def reset():
@@ -74,3 +79,7 @@ def reset():
 ### Other functions of your plugin
 def myfun(flag=True):
     return True, 'My plugin received an o%s flag.' % ('n' if flag else 'ff')
+
+def retrieve_state():
+
+    pass
