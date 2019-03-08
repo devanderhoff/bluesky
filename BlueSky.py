@@ -58,11 +58,12 @@ def main():
     else:
         mode = 'server-gui'
 
+    # mode = 'server-headless'
     discovery = ('--discoverable' in sys.argv or mode[-8:] == 'headless')
 
     # Check if alternate config file is passed or a default scenfile
     cfgfile = ''
-    scnfile = './scenario/synthetics/super/super2.scn'
+    scnfile = './synthetics/super/super2.scn'
     for i in range(len(sys.argv)):
         if len(sys.argv) > i + 1:
             if sys.argv[i] == '--config-file':
