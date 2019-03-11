@@ -51,7 +51,7 @@ class BlueSkyEnv(gym.Env):
         bs.sim.fastforward()
         self.observation_space = spaces.Box(low=self.low_obs, high=self.high_obs)
         # self.action_space = spaces.Discrete(360)
-        self.action_space = spaces.Box(low=-180, high=180, shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-4, high=4, shape=(1,), dtype=np.float32)
         # self.reset()
 
     def reset(self):
@@ -78,10 +78,11 @@ class BlueSkyEnv(gym.Env):
         # action_str = np.array2string(action[0])
         # action = np.round(action)
         #relative heading
-        action_tot = action[0]+180
+        action_tot = (action[0]*(180/4))+180
 
-        if self.ep/100 in {1,2,3,4,5,6,7,8,9}:
-            print(action[0])
+        # if self.ep/100 in {1,2,3,4,5,6,7,8,9}:
+        #     print(action[0])
+        #     print(action_tot)
 
         bs.stack.stack(bs.traf.id[0] + ' HDG ' + np.array2string(action_tot))
         bs.sim.step()
@@ -105,7 +106,7 @@ class BlueSkyEnv(gym.Env):
             reward = reward + 2000
             done = True
 
-        if self.ep >= 1000:
+        if self.ep >= 500:
             done = True
 
         # print(reward)
