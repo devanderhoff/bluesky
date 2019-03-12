@@ -21,9 +21,9 @@ class BlueSkyEnv(gym.Env):
         self.ep = 0
         self.los = 5 * 1.05  # [nm] Horizontal separation minimum for resolution
         self.wpt_reached = 5
-        # observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint]
-        self.min_hdg = 0
-        self.max_hdg = 360
+        # observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint] Real values, so not yet normalized
+        self.min_hdg = 0 #0
+        self.max_hdg = 360 #360
         self.min_lat = -1
         self.max_lat = 1
         self.min_lon = -1
@@ -35,8 +35,14 @@ class BlueSkyEnv(gym.Env):
         self.max_dist_waypoint = 125
 
         # define observation bounds
-        self.low_obs = np.array([self.min_lat, self.min_lon, self.min_hdg, self.min_dist_plane, self.min_dist_waypoint])
-        self.high_obs = np.array([self.max_lat, self.max_lon, self.max_hdg, self.max_dist_plane, self.max_dist_waypoint])
+        self.low_obs = np.array([self.min_lat, self.min_lon,
+                                 normalizer(self.min_hdg,'HDGToNorm',self.min_hdg,self.max_hdg),
+                                 normalizer(self.min_dist_plane,'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+                                 normalizer(self.min_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+        self.high_obs = np.array([self.max_lat, self.max_lon,
+                                  normalizer(self.max_hdg, 'HDGToNorm', self.min_hdg, self.max_hdg),
+                                  normalizer(self.max_dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+                                  normalizer(self.max_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
         self.viewer = None
 
 
@@ -49,10 +55,12 @@ class BlueSkyEnv(gym.Env):
         self.scnfile = '/synthetics/super/super3.scn'
         bs.init(self.mode, discovery=self.discovery, cfgfile=self.cfgfile, scnfile=self.scnfile)
         bs.sim.fastforward()
-        self.observation_space = spaces.Box(low=self.low_obs, high=self.high_obs)
+        self.observation_space = spaces.Box(low=self.low_obs, high=self.high_obs, dtype=np.float32)
         # self.action_space = spaces.Discrete(360)
-        self.action_space = spaces.Box(low=-4, high=4, shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
         # self.reset()
+
+
 
     def reset(self):
         # reset and reinitizalie sim
@@ -64,7 +72,13 @@ class BlueSkyEnv(gym.Env):
         dist_plane = tools.geo.kwikdist(bs.traf.lat[0], bs.traf.lon[0], bs.traf.lat[1], bs.traf.lon[1])
         dist_wpt = tools.geo.kwikdist(bs.traf.lat[0], bs.traf.lon[0], bs.traf.actwp.lat[0], bs.traf.actwp.lon[0])
         # create initial observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint]
-        self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
+        self.state = np.array([bs.traf.lat[0],bs.traf.lon[0],
+                               normalizer(bs.traf.hdg[0], 'HDGToNorm', self.min_hdg, self.max_hdg),
+                               normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+                               normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
+                               ])
+
+        # self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
         self.state_object = np.array([bs.traf.lat[1], bs.traf.lon[1], bs.traf.hdg[1]])
         self.ep = 0
         return self.state
@@ -73,13 +87,11 @@ class BlueSkyEnv(gym.Env):
         reward = 0
         self.ep = self.ep + 1
         done = False
-
         #do one step and perform action
         # action_str = np.array2string(action[0])
         # action = np.round(action)
         #relative heading
-        action_tot = (action[0]*(180/4))+180
-
+        action_tot = normalizer(action[0],'NormToHDG', self.min_hdg, self.max_hdg)
         # if self.ep/100 in {1,2,3,4,5,6,7,8,9}:
         #     print(action[0])
         #     print(action_tot)
@@ -88,23 +100,29 @@ class BlueSkyEnv(gym.Env):
         bs.sim.step()
         dist_plane = tools.geo.kwikdist(bs.traf.lat[0], bs.traf.lon[0], bs.traf.lat[1], bs.traf.lon[1])
         dist_wpt = tools.geo.kwikdist(bs.traf.lat[0], bs.traf.lon[0], bs.traf.actwp.lat[0], bs.traf.actwp.lon[0])
-        self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
+        if dist_plane <= self.los:
+            reward = reward - 100
+            done = True
+
+        if dist_wpt <= self.wpt_reached:
+            reward = reward + 100
+            done = True
+        self.state = np.array([bs.traf.lat[0], bs.traf.lon[0],
+                               normalizer(bs.traf.hdg[0], 'HDGToNorm', self.min_hdg, self.max_hdg),
+                               normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+                               normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
+                               ])
+        # self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
         self.state_object = np.array([bs.traf.lat[1], bs.traf.lon[1], bs.traf.hdg[1]])
         # print(dist_plane)
         # print(self.state)
         # calculate reward
         # print(action_str)
-        reward = reward - dist_wpt/10
+        reward = reward - dist_wpt
         # reward = reward + -dist_plane/5
 
         # check LOS and wpt reached
-        if self.state[3] <= self.los:
-            reward = reward - 2000
-            done = True
 
-        if self.state[4] <= self.wpt_reached:
-            reward = reward + 2000
-            done = True
 
         if self.ep >= 500:
             done = True
@@ -171,6 +189,32 @@ class BlueSkyEnv(gym.Env):
         if self.viewer:
             self.viewer.close()
             self.viewer = None
+
+def normalizer(value,type,min,max):
+    #Scales input values so that the NN performance is improved
+    #Currently scales to fixed determined values depending on the needed scale.
+    #List of scales:
+    #HDG : from 1/360 to -1,1
+    #Distances scales from min/max_dist to 0,1
+    #latlon from lat/lon to -1,1
+    if type == 'HDGToNorm':
+        output = (2/360)*(value-360) + 1
+    if type == 'DistToNorm':
+        output = (1/(max-min))*(value-max) + 1
+    if type == 'NormToHDG':
+        output = (360/2)*(value-1) + 360
+    if type == 'NormToDist':
+        output = (max-min)*(value-1) + max
+
+    return output
+
+
+
+
+
+
+
+
 
 
 def latlon_to_screen(lat_center, lon_center, latplane, lonplane, scale):

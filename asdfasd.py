@@ -10,19 +10,22 @@ from stable_baselines.common.policies import MlpLnLstmPolicy, MlpPolicy
 from stable_baselines.common.vec_env import SubprocVecEnv
 from stable_baselines import PPO2
 
-# #
-env = gym.make('bluesky-v0')
-# n_cpu = 8
-# env = SubprocVecEnv([lambda: gym.make('bluesky-v0') for i in range(n_cpu)])
-#
-# policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
-# model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/test7', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=6, nminibatches=16, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01,)
-# model.learn(total_timesteps=500000)
-# model.save("test13")
+# # #
+# env = gym.make('bluesky-v0')
+
+n_cpu = 8
+env = SubprocVecEnv([lambda: gym.make('bluesky-v0') for i in range(n_cpu)])
+
+policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
+model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/test8', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=6, nminibatches=16, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
+model.learn(total_timesteps=500000)
+model.save("test23")
 
 # #
-model = PPO2.load("test13")
-#
+# model = PPO2.load("test21")
+# model.set_env(env=env)
+# model.learn(total_timesteps=200000, tb_log_name='/home/dennis/tensorboard/test8')
+# model.save("test21")
 # obs = env.reset()
 # while True:
 #     action, _states = model.predict(obs)
@@ -30,24 +33,24 @@ model = PPO2.load("test13")
 #     env.render()
 
 
-for i_episode in range(20):
-    obs = env.reset()
-    for t in range(500):
-        action, _states = model.predict(obs)
-        obs, rewards, dones, info = env.step(action)
-        # print(action)
-        env.render()
-        if dones:
-            print("Episode finished after {} timesteps".format(t+1))
-            break
-env.close()
-
+# for i_episode in range(20):
+#     obs = env.reset()
+#     for t in range(500):
+#         action, _states = model.predict(obs)
+#         obs, rewards, dones, info = env.step(action)
+#         # print(action)
+#         env.render()
+#         if dones:
+#             print("Episode finished after {} timesteps".format(t+1))
+#             break
+# env.close()
+#
 
 
 
 # #
 # env = gym.make('bluesky-v0')
-#
+# #
 # for i_episode in range(20):
 #     observation = env.reset()
 #     for t in range(1000):
@@ -61,7 +64,7 @@ env.close()
 #             break
 # env.close()
 # #
-# # #
+# # # #
 # #
 
 #
