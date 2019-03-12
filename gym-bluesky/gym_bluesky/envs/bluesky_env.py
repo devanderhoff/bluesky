@@ -39,6 +39,14 @@ class BlueSkyEnv(gym.Env):
         self.high_obs = np.array([self.max_lat, self.max_lon, self.max_hdg, self.max_dist_plane, self.max_dist_waypoint])
         self.viewer = None
 
+        ## Second obs space
+        # self.observations_space = spaces.Dict({
+        #     'position': spaces.Box(low=-1, high=1, shape=(2,)),
+        #     'heading': spaces.Box(low=0, high=360, shape=(1,)),
+        #     'distplane': spaces.Box(low=self.min_dist_plane, high=self.max_dist_plane, shape=(1,)),
+        #     'distwpt': spaces.Box(low=self.min_dist_waypoint, high=self.max_dist_waypoint, shape=(1,))
+        # })
+
 
 
         # Initialize bluesky
@@ -66,6 +74,14 @@ class BlueSkyEnv(gym.Env):
         # create initial observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint]
         self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
         self.state_object = np.array([bs.traf.lat[1], bs.traf.lon[1], bs.traf.hdg[1]])
+
+        # self.state = {
+        #     'position': np.array([bs.traf.lat[0], bs.traf.lon[0]]),
+        #     'heading': np.array([bs.traf.hdg[0]]),
+        #     'distplane': np.array([dist_plane]),
+        #     'distwpt': np.array([dist_wpt])
+        # }
+
         self.ep = 0
         return self.state
 
@@ -79,7 +95,7 @@ class BlueSkyEnv(gym.Env):
         # action = np.round(action)
         #relative heading
         action_tot = (action[0]*(180/4))+180
-
+        # print(action_tot)
         # if self.ep/100 in {1,2,3,4,5,6,7,8,9}:
         #     print(action[0])
         #     print(action_tot)
@@ -94,16 +110,21 @@ class BlueSkyEnv(gym.Env):
         # print(self.state)
         # calculate reward
         # print(action_str)
-        reward = reward - dist_wpt/10
+        reward = reward + (1/dist_wpt)*5
         # reward = reward + -dist_plane/5
-
+        # self.state = {
+        #     'position': np.array([bs.traf.lat[0], bs.traf.lon[0]]),
+        #     'heading': np.array([bs.traf.hdg[0]]),
+        #     'distplane': np.array([dist_plane]),
+        #     'distwpt': np.arrray([dist_wpt])
+        # }
         # check LOS and wpt reached
         if self.state[3] <= self.los:
-            reward = reward - 2000
+            reward = reward - 300
             done = True
 
         if self.state[4] <= self.wpt_reached:
-            reward = reward + 2000
+            reward = reward + 300
             done = True
 
         if self.ep >= 500:
@@ -121,6 +142,7 @@ class BlueSkyEnv(gym.Env):
 
         latplane = self.state[0]
         lonplane = self.state[1]
+        # latplane, lonplane = self.state['position']
         latplane2 = self.state_object[0]
         lonplane2 = self.state_object[1]
 
