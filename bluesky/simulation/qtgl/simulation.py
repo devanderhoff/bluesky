@@ -63,19 +63,20 @@ def Simulation(detached):
             ''' Perform a simulation timestep. '''
             # When running at a fixed rate, or when in hold/init,
             # increment system time with sysdt and calculate remainder to sleep.
-            if not self.ffmode or not self.state == bs.OP:
-                remainder = self.syst - time.time()
-                if remainder > MINSLEEP:
-                    time.sleep(remainder)
-
-            elif self.ffstop is not None and self.simt >= self.ffstop:
-                if self.benchdt > 0.0:
-                    bs.scr.echo('Benchmark complete: %d samples in %.3f seconds.' % \
-                                (bs.scr.samplecount, time.time() - self.bencht))
-                    self.benchdt = -1.0
-                    self.pause()
-                else:
-                    self.op()
+            # self.ffmode = True
+            # if not self.ffmode or not self.state == bs.OP:
+            #     remainder = self.syst - time.time()
+            #     if remainder > MINSLEEP:
+            #         time.sleep(remainder)
+            #
+            # elif self.ffstop is not None and self.simt >= self.ffstop:
+            #     if self.benchdt > 0.0:
+            #         bs.scr.echo('Benchmark complete: %d samples in %.3f seconds.' % \
+            #                     (bs.scr.samplecount, time.time() - self.bencht))
+            #         self.benchdt = -1.0
+            #         self.pause()
+            #     else:
+            #         self.op()
 
             if self.state == bs.OP:
                 # Plugins pre-update

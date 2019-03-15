@@ -137,6 +137,12 @@ class Server(Thread):
                     route, eventname, data = msg[:-2], msg[-2], msg[-1]
                     sender_id = route[0]
 
+
+                    if eventname == b'TEST':
+                        print(self.workers)
+
+
+
                     if eventname == b'REGISTER':
                         # This is a registration message for a new connection
                         # Reply with our host ID
