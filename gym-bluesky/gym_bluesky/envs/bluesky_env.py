@@ -20,7 +20,6 @@ class BlueSkyEnv(gym.Env):
         ## Enable client server interface
         global recdataflag, data_requested
         recdataflag = False
-
         self.NodeID = kwargs['NodeID']
         self.cfgfile = ''
         self.scnfile = './synthetics/super/super3.scn'
@@ -69,7 +68,7 @@ class BlueSkyEnv(gym.Env):
         # bs.init(self.mode, discovery=self.discovery, cfgfile=self.cfgfile, scnfile=self.scnfile)
         # bs.sim.fastforward()
         self.observation_space = spaces.Box(low=self.low_obs, high=self.high_obs, dtype=np.float32)
-        self.action_space = spaces.Discrete(360)
+        # self.action_space = spaces.Discrete(360)
         self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
         # self.reset()
 
@@ -77,6 +76,7 @@ class BlueSkyEnv(gym.Env):
 
     def reset(self):
         global recdataflag
+        # print('reset env')
 
         # reset and reinitizalie sim
         str_to_send = 'IC ' + self.scnfile + '; MLSTEP'
@@ -108,8 +108,8 @@ class BlueSkyEnv(gym.Env):
         self.ep = self.ep + 1
         done = False
         #do one step and perform action
-        action_tot = normalizer(action[0],'NormToHDG', self.min_hdg, self.max_hdg)
-        self.myclient.send_event(b'STACKCMD','HDG SUP0 '+ np.array2string(action_tot)+ '; MLSTEP')
+        action_tot = normalizer(action[0], 'NormToHDG', self.min_hdg, self.max_hdg)
+        self.myclient.send_event(b'STACKCMD','HDG SUP0 ' + np.array2string(action_tot) + '; MLSTEP')
 
         while not recdataflag:
             self.myclient.receive(1000)
@@ -141,6 +141,9 @@ class BlueSkyEnv(gym.Env):
 
         if self.ep >= 500:
             done = True
+
+        if done is True:
+            self.myclient.send_event(b'STACKCMD', 'HOLD')
 
         recdataflag = False
 

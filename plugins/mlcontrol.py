@@ -3,14 +3,14 @@
 from bluesky import stack, sim, traf  #, settings, navdb, traf, sim, scr, tools
 
 
-# myclientrte = None
+myclientrte = None
 
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
 def init_plugin():
 
     # Addtional initilisation code
-
+    # sim.send_event(b'STACKCMD', 'addnodes 3')
     # Configuration parameters
     config = {
         # The name of your plugin
@@ -22,11 +22,11 @@ def init_plugin():
         # Update interval in seconds. By default, your plugin's update function(s)
         # are called every timestep of the simulation. If your plugin needs less
         # frequent updates provide an update interval.
-        # 'update_interval': 0.05,
+        # 'update_interval': 1,
 
         'update':          update,
 
-        'preupdate':       preupdate,
+        # 'preupdate':       preupdate,
 
         # If your plugin has a state, you will probably need a reset function to
         # clear the state in between simulations.
@@ -63,21 +63,31 @@ def update():
         hdg=traf.hdg
     )
     sim.send_event(b'MLSTATEREPLY', data, myclientrte)
+    # print('statereply')
     sim.pause()
+    sim.fastforward
 
 def preupdate():
     global myclientrte
-    sim.fastforward()
+    # print('preupdate')
     if myclientrte is None:
         sim.pause()
+        sim.fastforward
 
 def reset():
     global myclientrte
+    # print('reset node' + str(myclientrte))
     myclientrte = None
+    sim.pause()
+    sim.fastforward
+
 
 def mlstep():
     global myclientrte
     myclientrte = stack.routetosender()
+    # print('mlstep')
+    sim.fastforward
     sim.op()
+    # sim.fastforward(1)
 
 
