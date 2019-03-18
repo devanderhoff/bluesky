@@ -36,7 +36,7 @@ class Server(Thread):
         super(Server, self).__init__()
         self.spawned_processes = list()
         self.running = True
-        self.max_nnodes = min(cpu_count(), bs.settings.max_nnodes)
+        self.max_nnodes = bs.settings.max_nnodes #min(cpu_count(), bs.settings.max_nnodes)
         self.scenarios = []
         self.host_id = b'\x00' + os.urandom(4)
         self.clients = []
@@ -136,6 +136,12 @@ class Server(Thread):
                     # Message format: [route0, ..., routen, name, data]
                     route, eventname, data = msg[:-2], msg[-2], msg[-1]
                     sender_id = route[0]
+
+
+                    if eventname == b'TEST':
+                        print(self.workers)
+
+
 
                     if eventname == b'REGISTER':
                         # This is a registration message for a new connection

@@ -63,7 +63,7 @@ def main():
 
     # Check if alternate config file is passed or a default scenfile
     cfgfile = ''
-    scnfile = './synthetics/super/super2.scn'
+    scnfile = ''
     for i in range(len(sys.argv)):
         if len(sys.argv) > i + 1:
             if sys.argv[i] == '--config-file':
