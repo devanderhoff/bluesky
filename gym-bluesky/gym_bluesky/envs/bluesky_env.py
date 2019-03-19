@@ -1,10 +1,8 @@
 import numpy as np
-
 import gym
 from gym import spaces
 import bluesky as bs
-from bluesky import tools, settings
-import sys
+from bluesky import tools
 from bluesky.network.client import Client
 import time
 
@@ -17,39 +15,70 @@ class BlueSkyEnv(gym.Env):
     }
 
     def __init__(self, **kwargs):
-        ## Enable client server interface
-        global recdataflag, data_requested
+        """
+        # Initialize client server interface
+        # NodeID: is required for each individual environment to connect to its respective simulation node, when
+        # running a single simulation this argument is not required.
+        # n_cpu: total amount of nodes that have to be initialized.
+        # NOTE: N_cpu and len(NodeID) have to be the same
+        # scenfile: The specific scenario file this environment is going to run.
+        # TODO:
+            -Use bs.settings for ports and plugin check.
+            -Starting of server integration (Now the server has to separately be started by using bluesky.py --headless
+        """
+        global recdataflag, recdata
         recdataflag = False
+        recdata = None
         self.NodeID = kwargs['NodeID']
+        self.n_cpu = kwargs['n_cpu']
         self.cfgfile = ''
-        self.scnfile = './synthetics/super/super3.scn'
+        self.scenfile = kwargs['scenfile']
+        if self.scenfile is None:
+            self.scenfile = './synthetics/super/super3.scn'
+
+        if self.NodeID != 0 and self.n_cpu >= 1:
+            # print('Client {0:2d} waiting for node to initialize'.format(self.NodeID))
+            time.sleep(5)
+
         self.myclient = Client()
         self.myclient.connect(event_port=52000, stream_port=52001)
         self.myclient.receive(1000)
         self.myclient.actnode(self.myclient.servers[self.myclient.host_id]['nodes'][self.NodeID])
         self.myclient.event_received.connect(on_event)
-        #### Set constants for envi
-        self.nm = 1852
+
+        if self.NodeID == 0 and self.n_cpu >= 1:
+            str_to_send = 'addnodes ' + str(self.n_cpu - 1)
+            # print(str_to_send)
+            self.myclient.send_event(b'STACKCMD', str_to_send)
+            print('Initializing {0:2d} nodes'.format(self.n_cpu))
+            time.sleep(5)
+
+        # Set constants for environment
+        self.nm = 1852  # Nautical miles [nm] in meter [m]
         self.ep = 0
         self.los = 5 * 1.05  # [nm] Horizontal separation minimum for resolution
-        self.wpt_reached = 5
-        # observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint] Real values, so not yet normalized
-        self.min_hdg = 0    #0
-        self.max_hdg = 360  #360
-        self.min_lat = -1
-        self.max_lat = 1
-        self.min_lon = -1
-        self.max_lon = 1
-        # max values based upon size of latlon box
+        self.wpt_reached = 5  # [nm]
+        self.min_hdg = 0    # [deg]
+        self.max_hdg = 360  # [deg]
+        self.min_lat = -1  # [lat/lon]
+        self.max_lat = 1  # [lat/lon]
+        self.min_lon = -1  # [lat/lon]
+        self.max_lon = 1  # [lat/lon]
+
         self.min_dist_plane = self.los * 0.95
         self.max_dist_plane = 125
         self.min_dist_waypoint = self.wpt_reached * 0.95
         self.max_dist_waypoint = 125
 
-        # define observation bounds
+        # TODO:State definitions and other state information still has to be formalized.
+        self.state = None
+        self.state_object = None
+
+        # Define observation bounds and normalize so that all values range between -1 and 1 or 0 and 1,
+        # normalization improves neural networks ability to converge
         self.low_obs = np.array([self.min_lat, self.min_lon,
-                                 normalizer(self.min_hdg,'HDGToNorm',self.min_hdg,self.max_hdg),
-                                 normalizer(self.min_dist_plane,'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+                                 normalizer(self.min_hdg, 'HDGToNorm', self.min_hdg,self.max_hdg),
+                                 normalizer(self.min_dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
                                  normalizer(self.min_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
         self.high_obs = np.array([self.max_lat, self.max_lon,
                                   normalizer(self.max_hdg, 'HDGToNorm', self.min_hdg, self.max_hdg),
@@ -57,66 +86,70 @@ class BlueSkyEnv(gym.Env):
                                   normalizer(self.max_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
         self.viewer = None
 
-
-
-        # Initialize bluesky
-        # self.mode = 'sim-detached'
-        # self.discovery = ('--discoverable' in sys.argv or self.mode[-8:] == 'headless')
-        # Check if alternate config file is passed or a default scenfile
-        # self.cfgfile = ''
-        # self.scnfile = '/synthetics/super/super3.scn'
-        # bs.init(self.mode, discovery=self.discovery, cfgfile=self.cfgfile, scnfile=self.scnfile)
-        # bs.sim.fastforward()
+        # observation is a array of shape (5,) [latitude,longitude,hdg,dist_plane,dist_waypoint]
         self.observation_space = spaces.Box(low=self.low_obs, high=self.high_obs, dtype=np.float32)
-        # self.action_space = spaces.Discrete(360)
+        # Action space is normalized heading, shape (1,)
         self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
-        # self.reset()
-
-
 
     def reset(self):
+        """
+        Reset the environment to initial state
+        recdata is a dict that contains requested simulation data from Bluesky. Can be changed in plugin MLCONTROL.
+        """
         global recdataflag
-        # print('reset env')
 
-        # reset and reinitizalie sim
-        str_to_send = 'IC ' + self.scnfile + '; MLSTEP'
+        str_to_send = 'IC ' + self.scenfile + '; MLSTEP'
         recdataflag = False
         self.myclient.send_event(b'STACKCMD', str_to_send)
+
         while not recdataflag:
             self.myclient.receive(1000)
 
-        # calculate state values
+        # Calculate distance to plane and waypoint. This method will change when more research is done into state def.
         dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
         dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], 0.5, 0.5)
 
-        # create initial observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint]
+        # Set state to initial state.
         self.state = np.array([recdata['lat'][0],recdata['lon'][0],
                                normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
                                normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
                                normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
                                ])
 
-        # self.state = np.array([bs.traf.lat[0], bs.traf.lon[0], bs.traf.hdg[0], dist_plane, dist_wpt])
         self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
         self.ep = 0
+
+        # Reset data flag when data has been processed.
         recdataflag = False
         return self.state
 
     def step(self, action):
+        """
+        This function interacts with the Bluesky simulation node/server, and gives a action command to the environment
+        and returns state(t + step)
+        Reward accumulation is done outside this step function, so this function returns the reward gained during
+        this simulation step.
+        """
+        # Initialize step parameters
         global recdataflag
         reward = 0
         self.ep = self.ep + 1
         done = False
-        #do one step and perform action
-        action_tot = normalizer(action[0], 'NormToHDG', self.min_hdg, self.max_hdg)
-        self.myclient.send_event(b'STACKCMD','HDG SUP0 ' + np.array2string(action_tot) + '; MLSTEP')
 
+        # Forward action and let bluesky run a simulation step.
+        # Normalize action to be between 0 and 1
+        action_tot = normalizer(action[0], 'NormToHDG', self.min_hdg, self.max_hdg)
+        self.myclient.send_event(b'STACKCMD', 'HDG SUP0 ' + np.array2string(action_tot) + '; MLSTEP')
+
+        # Wait for server to respond
         while not recdataflag:
             self.myclient.receive(1000)
 
+        # Do some intermediate state update calculations.
         dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
-        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], 0.5, 0.5)
+        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], 0.5, 0)
 
+        # Assign rewards if goals states are met or any other arbitary rewards.
         if dist_plane <= self.los:
             reward = reward - 100
             done = True
@@ -125,7 +158,12 @@ class BlueSkyEnv(gym.Env):
             reward = reward + 100
             done = True
 
-        # create initial observation is a array of 4 collums [latitude,longitude,hdg,dist_plane,dist_waypoint]
+        # if self.ep >= 500:
+        #     done = True
+
+        reward = reward + 3/dist_wpt
+
+        # Update state to state(t + step)
         self.state = np.array([recdata['lat'][0], recdata['lon'][0],
                                normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
                                normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
@@ -134,22 +172,20 @@ class BlueSkyEnv(gym.Env):
 
         self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
 
-
-
-        reward = reward - dist_wpt
-
-
-        if self.ep >= 500:
-            done = True
-
+        # Check if state is a terminal state, then stop simulation.
         if done is True:
             self.myclient.send_event(b'STACKCMD', 'HOLD')
 
+        # Reset data flag when data has been processed.
         recdataflag = False
 
         return self.state, reward, done, {}
 
     def render(self, mode='human'):
+        """
+        Obsolete rendering platform, for debugging purposes.
+        To render simulation, start bluesky --client and connect to running server.
+        """
 
         screen_width = 600
         screen_height = 600
@@ -209,20 +245,24 @@ class BlueSkyEnv(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+
 def on_event(eventname, eventdata, sender_id):
+    # Function that communicates with the bluesky server data stream.
     global recdataflag, recdata
     if eventname == b'MLSTATEREPLY':
-        # print('ML State reply received:', eventname)
         recdataflag = True
         recdata = eventdata
 
-def normalizer(value,type,min,max):
-    #Scales input values so that the NN performance is improved
-    #Currently scales to fixed determined values depending on the needed scale.
-    #List of scales:
-    #HDG : from 1/360 to -1,1
-    #Distances scales from min/max_dist to 0,1
-    #latlon from lat/lon to -1,1
+
+def normalizer(value, type, min, max):
+    """
+    Scales input values so that the NN performance is improved
+    Currently scales to fixed determined values depending on the needed scale.
+    List of scales:
+    HDG : from 1/360 to -1,1
+    Distances scales from min/max_dist to 0,1
+    latlon from lat/lon to -1,1
+    """
     if type == 'HDGToNorm':
         output = (2/360)*(value-360) + 1
     if type == 'DistToNorm':
@@ -231,15 +271,18 @@ def normalizer(value,type,min,max):
         output = (360/2)*(value-1) + 360
     if type == 'NormToDist':
         output = (max-min)*(value-1) + max
-
     return output
 
+
 def latlon_to_screen(lat_center, lon_center, latplane, lonplane, scale):
+    # Obsolete rendering functions to properly display plane location.
     x_screen = tools.geo.kwikdist(lat_center, lon_center, lat_center, lonplane) * scale
     y_screen = tools.geo.kwikdist(lat_center, lon_center, latplane, lon_center) * scale
     return x_screen, y_screen
 
+
 def dlatlon_to_screen(lat_center, lon_center, latplane, lonplane, scale):
+    # Obsolete rendering functions to properly display plane translation
     qdr, dist = tools.geo.qdrdist(lat_center, lon_center, latplane, lonplane)
     y_screen = dist * np.cos((2*np.pi/360)*qdr) * scale
     x_screen = dist * np.sin((2*np.pi/360)*qdr) * scale

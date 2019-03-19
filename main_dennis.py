@@ -14,72 +14,48 @@ from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines import PPO2
 # import stable_baselines
 
+def main():
 
-
-# # #
-
-if __name__ == '__main__':
-#
-#
-#     # srv_client = Client()
-#     # srv_client.connect(event_port=52000, stream_port=52001)
-#     # srv_client.receive(1000)
-#     # srv_client.send_event(b'ADDNODES', n_cpu-1)
-#     # print('sleeping')
-#     # time.sleep(5)
-#     # print('Continue')
-#     n_cpu = 16
-    def make_env(node_id):
-        """
-        Utility function for multiprocessed env.
-
-        :param env_id: (str) the environment ID
-        :param num_env: (int) the number of environments you wish to have in subprocesses
-        :param seed: (int) the inital seed for RNG
-        :param rank: (int) index of the subprocess
-        """
-        def _init():
-            env = gym.make('bluesky-v0', NodeID=node_id)
-            time.sleep(2)
-            print('hoi')
-            return env
-
-        return _init
+    # n_cpu = 8
+    # env = SubprocVecEnv([make_env(i, n_cpu) for i in range(n_cpu)])
     #
-    starttime = time.time()
-    n_cpu = 8
-    env = SubprocVecEnv([make_env(i) for i in range(n_cpu)])
-    #
-    #
-    #
+    # policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
+    # model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=4, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
+    # model.learn(total_timesteps=2000000)
+    # model.save("PPO2_1")
+
+    model = PPO2.load("PPO2_1")
+    env = gym.make('bluesky-v0', NodeID=0)
+    for i_episode in range(20):
+        obs = env.reset()
+        for t in range(5000):
+            action, _states = model.predict(obs)
+            # print(action)
+            obs, rewards, dones, info = env.step(action)
+            if dones:
+                print("Episode finished after {} timesteps".format(t+1))
+                break
 
 
-    # env = SubprocVecEnv([make_env(i)])
-    # print('sleep')
-    # env = SubprocVecEnv([gym.make('bluesky-v0', NodeID=0),gym.make('bluesky-v0', NodeID=1),gym.make('bluesky-v0', NodeID=2), gym.make('bluesky-v0', NodeID=3)])
-    # print('sleep')
-    # time.sleep(5)
-    # print(i)
-    # env = SubprocVecEnv([make_env(i) for i in range(n_cpu)])
-
-    # print('kaas')
 
 
-    # env = SubprocVecEnv([lambda: gym.make('bluesky-v0', NodeID=i) for i in range(n_cpu)])
-    # # for i in range(n_cpu):
-    #
 
-    print('sleep before the storm')
-    time.sleep(2)
-    # print('yaay')
-    policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
-    model = PPO2(MlpPolicy, env, verbose=1, tensorboard_log='/home/dennis/tensorboard/test11', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=1, full_tensorboard_log=False, policy_kwargs=policy_kwargs,ent_coef=0.01)
-    model.learn(total_timesteps=50000)
-    model.save("PPO2timing")
-    end = time.time()
-    tot = end - starttime
 
-    print(tot)
+def make_env(node_id, n_cpu):
+    """
+    Utility function for multiprocessed env.
+
+    :param env_id: (str) the environment ID
+    :param num_env: (int) the number of environments you wish to have in subprocesses
+    :param seed: (int) the inital seed for RNG
+    :param rank: (int) index of the subprocess
+    """
+
+    def _init():
+        env = gym.make('bluesky-v0', NodeID=node_id, n_cpu=n_cpu)
+        return env
+
+    return _init
 # #
 # # #
 # model = PPO2.load("testsgjklasgjkl30")
@@ -161,4 +137,7 @@ if __name__ == '__main__':
 # left = tools.geo.kwikdist(-1,1,-1,-1)
 #
 # print(up,right,bottom,left)
+if __name__ == '__main__':
+
+    main()
 
