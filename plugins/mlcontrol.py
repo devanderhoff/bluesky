@@ -60,34 +60,33 @@ def update():
     data = dict(
         lat=traf.lat,
         lon=traf.lon,
-        hdg=traf.hdg
+        hdg=traf.hdg,
+        actwplat=traf.actwp.lat,
+        actwplon=traf.actwp.lon,
+        id=traf.id,
     )
     sim.send_event(b'MLSTATEREPLY', data, myclientrte)
-    # print('statereply')
     sim.pause()
-    sim.fastforward
+    # sim.fastforward
 
 def preupdate():
     global myclientrte
-    # print('preupdate')
     if myclientrte is None:
         sim.pause()
-        sim.fastforward
+        # sim.fastforward
 
 def reset():
     global myclientrte
-    # print('reset node' + str(myclientrte))
     myclientrte = None
     sim.pause()
-    sim.fastforward
+    # sim.fastforward
 
 
 def mlstep():
     global myclientrte
     myclientrte = stack.routetosender()
-    # print('mlstep')
-    sim.fastforward
+    # sim.fastforward
     sim.op()
-    # sim.fastforward(1)
+
 
 

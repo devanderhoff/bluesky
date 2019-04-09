@@ -5,16 +5,16 @@ import bluesky as bs
 from bluesky import tools
 from bluesky.network.client import Client
 import time
+from ray.rllib.env import MultiAgentEnv
 
-
-class BlueSkyEnv(gym.Env):
+class BlueSkyEnv(MultiAgentEnv):
 
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 50
     }
 
-    def __init__(self, **kwargs):
+    def __init__(self, env_config): #**kwargs):
         """
         # Initialize client server interface
         # NodeID: is required for each individual environment to connect to its respective simulation node, when
@@ -29,16 +29,16 @@ class BlueSkyEnv(gym.Env):
         global recdataflag, recdata
         recdataflag = False
         recdata = None
-        self.NodeID = kwargs['NodeID']
-        self.n_cpu = kwargs['n_cpu']
+        self.NodeID = env_config.vector_index
+        self.n_cpu = env_config['nr_nodes']
         self.cfgfile = ''
-        self.scenfile = kwargs['scenfile']
+        self.scenfile = None #kwargs['scenfile']
         if self.scenfile is None:
             self.scenfile = './synthetics/super/super3.scn'
 
-        if self.NodeID != 0 and self.n_cpu >= 1:
+        # if self.NodeID != 0 and self.n_cpu >= 1:
             # print('Client {0:2d} waiting for node to initialize'.format(self.NodeID))
-            time.sleep(5)
+            # time.sleep(5)
 
         self.myclient = Client()
         self.myclient.connect(event_port=52000, stream_port=52001)
@@ -78,12 +78,18 @@ class BlueSkyEnv(gym.Env):
         # normalization improves neural networks ability to converge
         self.low_obs = np.array([self.min_lat, self.min_lon,
                                  normalizer(self.min_hdg, 'HDGToNorm', self.min_hdg,self.max_hdg),
+                                 normalizer(self.min_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint),
                                  normalizer(self.min_dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
-                                 normalizer(self.min_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+                                 normalizer(self.min_dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane)
+                                 ])
         self.high_obs = np.array([self.max_lat, self.max_lon,
                                   normalizer(self.max_hdg, 'HDGToNorm', self.min_hdg, self.max_hdg),
+                                  normalizer(self.max_dist_waypoint, 'DistToNorm', self.min_dist_waypoint,
+                                             self.max_dist_waypoint),
                                   normalizer(self.max_dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
-                                  normalizer(self.max_dist_waypoint, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+                                  normalizer(self.max_dist_plane, 'DistToNorm', self.min_dist_plane,
+                                             self.max_dist_plane)
+                                  ])
         self.viewer = None
 
         # observation is a array of shape (5,) [latitude,longitude,hdg,dist_plane,dist_waypoint]
@@ -105,16 +111,25 @@ class BlueSkyEnv(gym.Env):
         while not recdataflag:
             self.myclient.receive(1000)
 
-        # Calculate distance to plane and waypoint. This method will change when more research is done into state def.
-        dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
-        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwplat'][0], recdata['actwplon'][0])
+        #set properties based on loaded scenfile
+        self.nr_agents = len(recdata['id'])
+        self.id_agents = recdata['id']
+        # self.state = dict(zip(recdata['id'], recdata['lat'])
 
-        # Set state to initial state.
-        self.state = np.array([recdata['lat'][0],recdata['lon'][0],
-                               normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
-                               normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
-                               normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
-                               ])
+        # )/
+
+        statetest = BlueSkyEnv.calc_state(self, recdata)
+        self.state = dict(zip(recdata['id'], statetest))
+        # Calculate distance to plane and waypoint. This method will change when more research is done into state def.
+        # dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
+        # dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwplat'][0], recdata['actwplon'][0])
+        #
+        # # Set state to initial state.
+        # self.state = np.array([recdata['lat'][0],recdata['lon'][0],
+        #                        normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
+        #                        normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+        #                        normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
+        #                        ])
 
         self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
         self.ep = 0
@@ -132,53 +147,74 @@ class BlueSkyEnv(gym.Env):
         """
         # Initialize step parameters
         global recdataflag
-        reward = 0
+        # reward = 0
         self.ep = self.ep + 1
-        done = False
+        # done = False
+
+        # Loop over every agent
+        for id in action.keys():
+            action_tot = normalizer(action[id][0], 'NormToHDG', self.min_hdg, self.max_hdg)
+            self.myclient.send_event(b'STACKCMD', 'HDG ' + id + ' ' + np.array2string(action_tot))
 
         # Forward action and let bluesky run a simulation step.
         # Normalize action to be between 0 and 1
 
-        action_tot = normalizer(action[0], 'NormToHDG', self.min_hdg, self.max_hdg)
-        self.myclient.send_event(b'STACKCMD', 'HDG SUP0 ' + np.array2string(action_tot) + '; MLSTEP')
+        # action_tot = normalizer(action[0], 'NormToHDG', self.min_hdg, self.max_hdg)
+        self.myclient.send_event(b'STACKCMD', 'MLSTEP')
 
         # Wait for server to respond
         while not recdataflag:
             self.myclient.receive(1000)
 
+        #Create state dict
+        statetest = BlueSkyEnv.calc_state(self, recdata)
+        self.state = dict(zip(recdata['id'], statetest))
+
+        # for n_agent in range(self.nr_agents):
+        reward, done = BlueSkyEnv.calc_reward(self)
+
+
+
         # Do some intermediate state update calculations.
-        dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
-        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwplat'][0], recdata['actwplon'][0])
+        # dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
+        # dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwplat'][0], recdata['actwplon'][0])
 
         # Assign rewards if goals states are met or any other arbitary rewards.
-        if dist_plane <= self.los:
-            reward = reward - 100
-            done = True
+        # if dist_plane <= self.los:
+        #     reward = reward - 100
+        #     done = True
+        #
+        # if dist_wpt <= self.wpt_reached:
+        #     reward = reward + 100
+        #     done = True
+        #
+        # if self.ep >= 500:
+        #     done = True
+        #
+        # reward = reward + 3/dist_wpt
 
-        if dist_wpt <= self.wpt_reached:
-            reward = reward + 100
-            done = True
-
-        if self.ep >= 500:
-            done = True
-
-        reward = reward + 3/dist_wpt
-
-        # Update state to state(t + step)
-        self.state = np.array([recdata['lat'][0], recdata['lon'][0],
-                               normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
-                               normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
-                               normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
-                               ])
+        # # Update state to state(t + step)
+        # self.state = np.array([recdata['lat'][0], recdata['lon'][0],
+        #                        normalizer(recdata['hdg'][0], 'HDGToNorm', self.min_hdg, self.max_hdg),
+        #                        normalizer(dist_plane, 'DistToNorm', self.min_dist_plane, self.max_dist_plane),
+        #                        normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
+        #                        ])
 
         self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
 
         # Check if state is a terminal state, then stop simulation.
-        if done is True:
-            self.myclient.send_event(b'STACKCMD', 'HOLD')
+        for id in done.keys():
+            if done[id]:
+                self.myclient.send_event(b'STACKCMD', 'HOLD')
+                done["__all__"] = True
+        if self.ep >= 500:
+            done["__all__"] = True
+        # if done is True:
+            # self.myclient.send_event(b'STACKCMD', 'HOLD')
 
         # Reset data flag when data has been processed.
         recdataflag = False
+
 
         return self.state, reward, done, {}
 
@@ -246,6 +282,47 @@ class BlueSkyEnv(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+    def calc_state(self, recdata):
+        output = [[] for _ in range(self.nr_agents)]
+        for i in range(self.nr_agents):
+            dist_wpt = tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['actwplat'][i], recdata['actwplon'][i])
+            output[i] = np.array([recdata['lat'][i], recdata['lon'][i],
+                                       normalizer(recdata['hdg'][i], 'HDGToNorm', self.min_hdg, self.max_hdg),
+                                       normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+            for j in range(self.nr_agents):
+                if i is not j:
+                    temp = normalizer(tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['lat'][j], recdata['lon'][j]), 'DistToNorm', self.min_dist_plane, self.max_dist_plane)
+                    output[i] = np.append(output[i], temp)
+
+        return output
+
+    def calc_reward(self):
+
+        output = dict.fromkeys(self.id_agents)
+        output2 = dict.fromkeys(self.id_agents)
+        count = 0
+        for id in self.id_agents:
+            reward = 0
+            done = False
+            for i in range(4, self.nr_agents+3):
+                if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane):
+                    reward = reward - 100
+                    done = True
+                    count = count + 1
+            if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint):
+                reward = reward + 100
+                done = True
+                count = count + 1
+            reward = reward + (50 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
+            output[id] = reward
+            output2[id] = done
+            output2["__all__"] = count == self.nr_agents
+        return output, output2
+
+
+
+
+
 
 def on_event(eventname, eventdata, sender_id):
     # Function that communicates with the bluesky server data stream.
@@ -288,3 +365,4 @@ def dlatlon_to_screen(lat_center, lon_center, latplane, lonplane, scale):
     y_screen = dist * np.cos((2*np.pi/360)*qdr) * scale
     x_screen = dist * np.sin((2*np.pi/360)*qdr) * scale
     return x_screen, y_screen
+
