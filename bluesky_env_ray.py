@@ -29,29 +29,42 @@ class BlueSkyEnv(MultiAgentEnv):
         global recdataflag, recdata
         recdataflag = False
         recdata = None
-        self.NodeID = env_config.vector_index
-        self.n_cpu = env_config['nr_nodes']
+        self.work_id = env_config.worker_index
+        self.env_id = env_config.vector_index
+        # self.NodeID = env_config.vector_index
+        # self.n_cpu = env_config['nr_nodes']
         self.cfgfile = ''
         self.scenfile = None #kwargs['scenfile']
+        self.connected = False
         if self.scenfile is None:
             self.scenfile = './synthetics/super/super3.scn'
+
+
+        # if self.work_id == 0:
+        #     self.NodeID = self.env_id
+        # elif self.work_id == 1:
+        #     self.NodeID = self.env_id + 3
+        # elif self.work_id == 2:
+        #     self.NodeID = self.env_id + 6
+        # elif self.work_id == 3:
+        #     self.NodeID = self.env_id + 9
 
         # if self.NodeID != 0 and self.n_cpu >= 1:
             # print('Client {0:2d} waiting for node to initialize'.format(self.NodeID))
             # time.sleep(5)
+        # # print(self.NodeID)
+        # self.myclient = Client()
+        # self.myclient.connect(event_port=52000, stream_port=52001)
+        # self.myclient.receive(1000)
+        # # self.myclient.actnode(self.myclient.servers[self.myclient.host_id]['nodes'][self.NodeID])
+        # self.myclient.event_received.connect(on_event)
 
-        self.myclient = Client()
-        self.myclient.connect(event_port=52000, stream_port=52001)
-        self.myclient.receive(1000)
-        self.myclient.actnode(self.myclient.servers[self.myclient.host_id]['nodes'][self.NodeID])
-        self.myclient.event_received.connect(on_event)
-
-        if self.NodeID == 0 and self.n_cpu >= 1:
-            str_to_send = 'addnodes ' + str(self.n_cpu - 1)
-            # print(str_to_send)
-            self.myclient.send_event(b'STACKCMD', str_to_send)
-            print('Initializing {0:2d} nodes'.format(self.n_cpu))
-            time.sleep(5)
+        # if self.NodeID == 0 and self.n_cpu >= 1:
+        #     str_to_send = 'addnodes ' + str(self.n_cpu - 1)
+        #     # print(str_to_send)
+        #     self.myclient.send_event(b'STACKCMD', str_to_send)
+        #     print('Initializing {0:2d} nodes'.format(self.n_cpu))
+        #     time.sleep(5)
 
         # Set constants for environment
         self.nm = 1852  # Nautical miles [nm] in meter [m]
@@ -74,6 +87,7 @@ class BlueSkyEnv(MultiAgentEnv):
         self.state = None
         self.state_object = None
 
+        self.done_agent = None
         # Define observation bounds and normalize so that all values range between -1 and 1 or 0 and 1,
         # normalization improves neural networks ability to converge
         self.low_obs = np.array([self.min_lat, self.min_lon,
@@ -103,6 +117,27 @@ class BlueSkyEnv(MultiAgentEnv):
         recdata is a dict that contains requested simulation data from Bluesky. Can be changed in plugin MLCONTROL.
         """
         global recdataflag
+        self.done_agent = None
+        if not self.connected:
+            self.myclient = Client()
+            self.myclient.connect(event_port=52000, stream_port=52001)
+            self.myclient.receive(1000)
+            self.myclient.event_received.connect(on_event)
+
+            if self.work_id == 1:
+                self.NodeID = self.env_id
+            elif self.work_id == 2:
+                self.NodeID = self.env_id + 4
+            elif self.work_id == 3:
+                self.NodeID = self.env_id + 8
+            elif self.work_id == 4:
+                self.NodeID = self.env_id + 12
+
+            self.myclient.actnode(self.myclient.servers[self.myclient.host_id]['nodes'][self.NodeID])
+            self.connected = True
+        # self.myclient.event_received.connect(on_event)
+
+
 
         str_to_send = 'IC ' + self.scenfile + '; MLSTEP'
         recdataflag = False
@@ -166,12 +201,23 @@ class BlueSkyEnv(MultiAgentEnv):
         while not recdataflag:
             self.myclient.receive(1000)
 
+        self.nr_agents = len(recdata['id'])
+        self.id_agents = recdata['id']
+
         #Create state dict
         statetest = BlueSkyEnv.calc_state(self, recdata)
         self.state = dict(zip(recdata['id'], statetest))
 
         # for n_agent in range(self.nr_agents):
-        reward, done = BlueSkyEnv.calc_reward(self)
+        reward, done, self.done_agent = BlueSkyEnv.calc_reward(self, self.done_agent)
+        print(self.done_agent)
+
+        # for id in self.id_agents:
+            # if done[id]:
+                # self.myclient.send_event(b'STACKCMD', 'DEL ' + id)
+                # print('DEL ' + id)
+
+
 
 
 
@@ -200,15 +246,16 @@ class BlueSkyEnv(MultiAgentEnv):
         #                        normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
         #                        ])
 
-        self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
+        # self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
 
         # Check if state is a terminal state, then stop simulation.
-        for id in done.keys():
-            if done[id]:
-                self.myclient.send_event(b'STACKCMD', 'HOLD')
-                done["__all__"] = True
-        if self.ep >= 500:
-            done["__all__"] = True
+        # if self.ep >= 500:
+        #     done["__all__"] = True
+
+        if done["__all__"]:
+            self.myclient.send_event(b'STACKCMD', 'HOLD')
+
+
         # if done is True:
             # self.myclient.send_event(b'STACKCMD', 'HOLD')
 
@@ -296,28 +343,72 @@ class BlueSkyEnv(MultiAgentEnv):
 
         return output
 
-    def calc_reward(self):
+    def calc_reward(self, done_agent):
+        #create initialized dicts
+        if done_agent is None:
+            done_agent = dict.fromkeys(self.id_agents)
+            for id in self.id_agents:
+                done_agent[id] = False
 
-        output = dict.fromkeys(self.id_agents)
-        output2 = dict.fromkeys(self.id_agents)
-        count = 0
+        reward = dict.fromkeys(self.id_agents)
+        done = dict.fromkeys(self.id_agents)
         for id in self.id_agents:
-            reward = 0
-            done = False
+            reward[id] = 0
+            done[id] = False
+            done['__all__'] = False
+
+        #Determine rewards and if goals are met
+        for id in self.id_agents:
             for i in range(4, self.nr_agents+3):
-                if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane):
-                    reward = reward - 100
-                    done = True
-                    count = count + 1
-            if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint):
-                reward = reward + 100
-                done = True
-                count = count + 1
-            reward = reward + (50 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
-            output[id] = reward
-            output2[id] = done
-            output2["__all__"] = count == self.nr_agents
-        return output, output2
+                if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane) and not done_agent[id]:
+                    reward[id] = reward[id] - 100
+                    done["__all__"] = True
+
+            if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint) and not done_agent[id]:
+                reward[id] = reward[id] + 100
+                done_agent[id] = True
+                done[id] = True
+
+            if not done_agent[id]:
+                reward[id] = reward[id] + (5 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
+
+        done["__all__"] = all(value for value in done_agent.values()) #need fixing
+        return reward, done, done_agent
+
+    # def calc_reward(self, done_save, done_agent):
+    #     if done_save is None:
+    #         output2 = dict.fromkeys(self.id_agents)
+    #         for id in self.id_agents:
+    #             output2[id] = False
+    #         output2['__all__'] = False
+    #     else:
+    #         output2 = done_save
+    #
+    #     output = dict.fromkeys(self.id_agents)
+    #     for id in self.id_agents:
+    #         output[id] = 0
+    #
+    #     for id in self.id_agents:
+    #         agnt_done_flag = False
+    #
+    #         for i in range(4, self.nr_agents+3):
+    #             if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane) and not output2[id]:
+    #                 output[id] = output[id] - 100
+    #                 for id in self.id_agents:
+    #                     output2[id] = True
+    #                 output2["__all__"] = True
+    #
+    #         if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint) and not output2[id]:
+    #             output[id] = output[id] + 100
+    #             agnt_done_flag = True
+    #         if not output2[id]:
+    #             output[id] = output[id] + (5 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
+    #
+    #         if agnt_done_flag and not output2[id]:
+    #             output2[id] = True
+    #
+    #     output2["__all__"] = all(value for value in output2.values())
+    #     return output, output2
 
 
 

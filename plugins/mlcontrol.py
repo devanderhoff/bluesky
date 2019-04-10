@@ -67,25 +67,25 @@ def update():
     )
     sim.send_event(b'MLSTATEREPLY', data, myclientrte)
     sim.pause()
-    # sim.fastforward
+    sim.fastforward
 
 def preupdate():
     global myclientrte
     if myclientrte is None:
         sim.pause()
-        # sim.fastforward
+        sim.fastforward
 
 def reset():
     global myclientrte
     myclientrte = None
     sim.pause()
-    # sim.fastforward
+    sim.fastforward
 
 
 def mlstep():
     global myclientrte
     myclientrte = stack.routetosender()
-    # sim.fastforward
+    sim.fastforward
     sim.op()
 
 

@@ -15,15 +15,15 @@ from stable_baselines import PPO2
 # import stable_baselines
 
 import numpy as np
-# import ray.rllib.agents.ppo as ppo
+import ray.rllib.agents.ppo as ppo
 
 
-# import ray
-# from ray.tune.registry import register_env
-# from ray import tune
+import ray
+from ray.tune.registry import register_env
+from ray import tune
 #
 
-# from bluesky_env_ray import BlueSkyEnv
+from bluesky_env_ray import BlueSkyEnv
 
 
 
@@ -37,23 +37,26 @@ def main():
             return env
         return _init()
 
-
-    n_cpu = 8
-    env = SubprocVecEnv([make_env(i, n_cpu) for i in range(n_cpu)])
     #
-    # policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
-    model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=4, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
-    model.learn(total_timesteps=2000000)
-    # model.save("PPO2_1_222")
-    #
+    # # n_cpu = 8
+    # # env = SubprocVecEnv([make_env(i, n_cpu) for i in range(n_cpu)])
+    # #
+    # # policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
+    # # model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=4, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
+    # # model.learn(total_timesteps=2000000)
+    # # model.save("PPO2_1_222")
+    # #
     # model = PPO2.load("PPO2_1")
     # env = gym.make('bluesky-v0', NodeID=0)
     # for i_episode in range(20):
-    #     env.reset()
-    #     for t in range(4000):
-    #         # print(action)
-    #         obs, rewards, dones, info = env.step(np.array([0.2,0.5, 0.4]))
-    #         if dones:
+    #     obs = env.reset()
+    #     while True:
+    #         action, _states = model.predict(obs)
+    #         obs, rewards, dones, info = env.step(action)
+    #         # env.render(/)
+    #
+    #     # obs, rewards, dones, info =/
+    # #         if dones:
     #             print("Episode finished after {} timesteps".format(t+1))
     #             break
     # #
@@ -66,59 +69,83 @@ def main():
     # kwargs={'NodeID': 0,
     #         'n_cpu': 1,
     #         'scenfile': None})
+    #
 
-    #
-    # ray.init()
-    # # env_creator = lambda config:make_env(config,0,0)
-    # register_env("Bluesky", env_creator)
-    #
+    ray.init()
+    # env_creator = lambda config:make_env(config,0,0)
+    register_env("Bluesky", env_creator)
+
     # low_obs = np.array([-1,-1,-1,0,0,0])
     # high_obs = np.array([1,1,1,1,1,1])
-    # # trainer = ppo.PPOAgent(env="Bluesky", config={'num_workers':1,
-    # #                                                'num_envs_per_worker':5,
-    # #                                                'env_config': {'nr_nodes': 5}})
-    # # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-    # # Action space is normalized heading, shape (1,)
-    # # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
-    #
-    #
-    #
+    trainer = ppo.PPOAgent(env="Bluesky", config={
+            "log_level":"DEBUG",
+            'num_workers':1,
+            'num_cpus_per_worker':1,
+            'num_envs_per_worker':1,
+            'env_config':{'nr_nodes':12},
+            'horizon':500,
+            'batch_mode':'complete_episodes',
+            'model':{
+                'fcnet_hiddens':[64,64]},
+    })
+
+
+
+
+    while True:
+        trainer.train()
+    # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+    # Action space is normalized heading, shape (1,)
+    # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+
+
+
     #
     # tune.run(
     #     "PPO",
-    #     stop={"training_iteration": 500},
+    #     name='Test1',
+    #     local_dir='~/ray_results/superduper',
+    #     checkpoint_freq=10,
+    #     verbose=2,
+    #     stop={"training_iteration": 100},
     #     config={
     #         "env":"Bluesky",
     #         "log_level":"INFO",
-    #         'num_workers':1,
-    #         'num_cpus_per_worker':7,
-    #         'num_envs_per_worker':5,
+    #         'num_workers':4,
+    #         'num_cpus_per_worker':1,
+    #         'num_envs_per_worker':4,
+    #         'env_config':{'nr_nodes':12},
+    #         'horizon':500,
     #         'batch_mode':'complete_episodes',
-    #         'env_config':{'nr_nodes':5},
-    #         'horizon':500
+    #         'model':{
+    #             'fcnet_hiddens':[64,64]
+    #         },
+    #         'sample_batch_size':200,
+    #         'train_batch_size':200
+    #
     #     },)
 
     # trainer = ppo.PPOAgent(env="Bluesky")
-        # ,
-        #                    config={
-        #     "multiagent": {
-        #         "policy_graphs": {
-        #             # the first tuple value is None -> uses default policy graph
-        #             "SUP0": (None, obs_space, act_space, {"gamma": 0.99}),
-        #             "SUP1": (None, obs_space, act_space, {"gamma": 0.99}),
-        #             "SUP2": (None, obs_space, act_space, {"gamma": 0.99}),
-        #         },
-        #         'policy_mapping_fn':
-        #         lambda agent_id:
-        #             "SUP"
-        #
-        #
-        #     },
-        #                    })
+    #     ,
+    #                        config={
+    #         "multiagent": {
+    #             "policy_graphs": {
+    #                 # the first tuple value is None -> uses default policy graph
+    #                 "SUP0": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP1": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP2": (None, obs_space, act_space, {"gamma": 0.99}),
+    #             },
+    #             'policy_mapping_fn':
+    #             lambda agent_id:
+    #                 "SUP"
+    #
+    #
+    #         },
+    #                        })
 
     # while True:
     #     print(trainer.train())
-    #
+
     # tune.run(
     #     "PPO",
     #     stop={"training_iteration": 200},
