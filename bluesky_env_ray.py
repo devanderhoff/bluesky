@@ -31,6 +31,8 @@ class BlueSkyEnv(MultiAgentEnv):
         recdata = None
         self.work_id = env_config.worker_index
         self.env_id = env_config.vector_index
+        self.init_nr_agents = 3  #set by env_config at some point
+
         # self.NodeID = env_config.vector_index
         # self.n_cpu = env_config['nr_nodes']
         self.cfgfile = ''
@@ -87,7 +89,7 @@ class BlueSkyEnv(MultiAgentEnv):
         self.state = None
         self.state_object = None
 
-        self.done_agent = None
+
         # Define observation bounds and normalize so that all values range between -1 and 1 or 0 and 1,
         # normalization improves neural networks ability to converge
         self.low_obs = np.array([self.min_lat, self.min_lon,
@@ -111,13 +113,13 @@ class BlueSkyEnv(MultiAgentEnv):
         # Action space is normalized heading, shape (1,)
         self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
 
+
     def reset(self):
         """
         Reset the environment to initial state
         recdata is a dict that contains requested simulation data from Bluesky. Can be changed in plugin MLCONTROL.
         """
         global recdataflag
-        self.done_agent = None
         if not self.connected:
             self.myclient = Client()
             self.myclient.connect(event_port=52000, stream_port=52001)
@@ -149,12 +151,16 @@ class BlueSkyEnv(MultiAgentEnv):
         #set properties based on loaded scenfile
         self.nr_agents = len(recdata['id'])
         self.id_agents = recdata['id']
+
+        self.init_agent = dict.fromkeys(self.id_agents)
+        for id in self.id_agents:
+            self.init_agent[id] = False
         # self.state = dict(zip(recdata['id'], recdata['lat'])
 
         # )/
 
-        statetest = BlueSkyEnv.calc_state(self, recdata)
-        self.state = dict(zip(recdata['id'], statetest))
+        self.state = BlueSkyEnv.calc_state(self, recdata)
+        # self.state = dict(zip(recdata['id'], statetest))
         # Calculate distance to plane and waypoint. This method will change when more research is done into state def.
         # dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
         # dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwplat'][0], recdata['actwplon'][0])
@@ -185,11 +191,11 @@ class BlueSkyEnv(MultiAgentEnv):
         # reward = 0
         self.ep = self.ep + 1
         # done = False
-
         # Loop over every agent
-        for id in action.keys():
-            action_tot = normalizer(action[id][0], 'NormToHDG', self.min_hdg, self.max_hdg)
+        for id, value in action.items():
+            action_tot = normalizer(value[0], 'NormToHDG', self.min_hdg, self.max_hdg)
             self.myclient.send_event(b'STACKCMD', 'HDG ' + id + ' ' + np.array2string(action_tot))
+            # print(action_tot)
 
         # Forward action and let bluesky run a simulation step.
         # Normalize action to be between 0 and 1
@@ -205,12 +211,14 @@ class BlueSkyEnv(MultiAgentEnv):
         self.id_agents = recdata['id']
 
         #Create state dict
-        statetest = BlueSkyEnv.calc_state(self, recdata)
-        self.state = dict(zip(recdata['id'], statetest))
+        self.state = BlueSkyEnv.calc_state(self, recdata)
+
+        # self.state = dict(zip(recdata['id'], statetest))
 
         # for n_agent in range(self.nr_agents):
-        reward, done, self.done_agent = BlueSkyEnv.calc_reward(self, self.done_agent)
-        print(self.done_agent)
+        reward, done = BlueSkyEnv.calc_reward(self)
+        # print(done)
+        # print(self.done_agent)
 
         # for id in self.id_agents:
             # if done[id]:
@@ -253,7 +261,13 @@ class BlueSkyEnv(MultiAgentEnv):
         #     done["__all__"] = True
 
         if done["__all__"]:
+            for key in done.keys():
+                done[key] = True
             self.myclient.send_event(b'STACKCMD', 'HOLD')
+
+        for id, value in self.init_agent.items():
+            if value:
+                self.myclient.send_event(b'STACKCMD', 'DEL ' + id)
 
 
         # if done is True:
@@ -330,28 +344,52 @@ class BlueSkyEnv(MultiAgentEnv):
             self.viewer = None
 
     def calc_state(self, recdata):
-        output = [[] for _ in range(self.nr_agents)]
-        for i in range(self.nr_agents):
-            dist_wpt = tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['actwplat'][i], recdata['actwplon'][i])
-            output[i] = np.array([recdata['lat'][i], recdata['lon'][i],
-                                       normalizer(recdata['hdg'][i], 'HDGToNorm', self.min_hdg, self.max_hdg),
-                                       normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
-            for j in range(self.nr_agents):
+        state = dict.fromkeys(self.id_agents)
+
+        for i, id in enumerate(self.id_agents):
+            dist_wpt = tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['actwplat'][i],
+                                          recdata['actwplon'][i])
+            state[id] = np.array([recdata['lat'][i], recdata['lon'][i],
+                                  normalizer(recdata['hdg'][i], 'HDGToNorm', self.min_hdg, self.max_hdg),
+                                  normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+            for j in range(len(self.id_agents)):
                 if i is not j:
                     temp = normalizer(tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['lat'][j], recdata['lon'][j]), 'DistToNorm', self.min_dist_plane, self.max_dist_plane)
-                    output[i] = np.append(output[i], temp)
+                    state[id] = np.append(state[id], temp)
 
-        return output
+            while len(state[id]) < 6:
+                state[id] = np.append(state[id],99)
 
-    def calc_reward(self, done_agent):
+
+        # for id, value in self.init_agent.items():
+        #     if value:
+        #         state[id] = np.array([self.min_lat, self.min_lon, self.min_hdg, self.max_dist_waypoint])
+        #         state[id] = np.append(state[id], np.zeros(((length_obs-4),)))
+        #         print(id + value)
+
+        # output = [[] for _ in range(self.nr_agents)]
+        # for i in range(self.nr_agents):
+        #     dist_wpt = tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['actwplat'][i], recdata['actwplon'][i])
+        #     output[i] = np.array([recdata['lat'][i], recdata['lon'][i],
+        #                                normalizer(recdata['hdg'][i], 'HDGToNorm', self.min_hdg, self.max_hdg),
+        #                                normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)])
+        #     for j in range(self.nr_agents):
+        #         if i is not j:
+        #             temp = normalizer(tools.geo.kwikdist(recdata['lat'][i], recdata['lon'][i], recdata['lat'][j], recdata['lon'][j]), 'DistToNorm', self.min_dist_plane, self.max_dist_plane)
+        #             output[i] = np.append(output[i], temp)
+
+        return state
+
+    def calc_reward(self):
         #create initialized dicts
-        if done_agent is None:
-            done_agent = dict.fromkeys(self.id_agents)
-            for id in self.id_agents:
-                done_agent[id] = False
-
+        # if self.init_agent is None:
+        #     self.init_agent = dict.fromkeys(self.id_agents)
+        #     for id in self.id_agents:
+        #         self.init_agent[id] = False
+        failure = False
         reward = dict.fromkeys(self.id_agents)
         done = dict.fromkeys(self.id_agents)
+
         for id in self.id_agents:
             reward[id] = 0
             done[id] = False
@@ -360,20 +398,52 @@ class BlueSkyEnv(MultiAgentEnv):
         #Determine rewards and if goals are met
         for id in self.id_agents:
             for i in range(4, self.nr_agents+3):
-                if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane) and not done_agent[id]:
+                if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane):
                     reward[id] = reward[id] - 100
+                    print('LOS!!!!!!!!!!!!!!!!')
                     done["__all__"] = True
+                    failure = True
 
-            if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint) and not done_agent[id]:
+            if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint):
+                print('WPT FOUND')
                 reward[id] = reward[id] + 100
-                done_agent[id] = True
+                self.init_agent[id] = True
                 done[id] = True
 
-            if not done_agent[id]:
-                reward[id] = reward[id] + (5 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
+            reward[id] = reward[id] + (3 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
 
-        done["__all__"] = all(value for value in done_agent.values()) #need fixing
-        return reward, done, done_agent
+        if not failure:
+            done["__all__"] = all(value for value in self.init_agent.values()) #need fixing
+        return reward, done
+
+    ########################################################################################################
+    # reward = dict.fromkeys(self.id_agents)
+    # done = dict.fromkeys(self.id_agents)
+    # for id in self.id_agents:
+    #     reward[id] = 0
+    #     done[id] = False
+    #     done['__all__'] = False
+    #
+    # # Determine rewards and if goals are met
+    # for id in self.id_agents:
+    #     for i in range(4, self.nr_agents + 3):
+    #         if self.state[id][i] <= normalizer(self.los, 'DistToNorm', self.min_dist_plane, self.max_dist_plane) and not \
+    #         self.init_agent[id]:
+    #             reward[id] = reward[id] - 100
+    #             done["__all__"] = True
+    #
+    #     if self.state[id][3] <= normalizer(self.wpt_reached, 'DistToNorm', self.min_dist_waypoint,
+    #                                        self.max_dist_waypoint) and not self.init_agent[id]:
+    #         reward[id] = reward[id] + 100
+    #         self.init_agent[id] = True
+    #         done[id] = True
+    #
+    #     if not self.init_agent[id]:
+    #         reward[id] = reward[id] + (
+    #                     5 / normalizer(self.state[id][3], 'NormToDist', self.min_dist_waypoint, self.max_dist_waypoint))
+    #
+    # done["__all__"] = all(value for value in self.init_agent.values())  # need fixing
+    #######################################################################################################################
 
     # def calc_reward(self, done_save, done_agent):
     #     if done_save is None:

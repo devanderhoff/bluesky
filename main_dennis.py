@@ -3,15 +3,15 @@
 # import multiprocessing
 # import time
 import gym
-import gym_bluesky
+# import gym_bluesky
 # from spinup.utils.test_policy import load_policy, run_policy
 # import bluesky as bs
 # from bluesky import tools
 # from bluesky.network.client import Client
 
-from stable_baselines.common.policies import MlpLnLstmPolicy, MlpPolicy
-from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
-from stable_baselines import PPO2
+# from stable_baselines.common.policies import MlpLnLstmPolicy, MlpPolicy
+# from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
+# from stable_baselines import PPO2
 # import stable_baselines
 
 import numpy as np
@@ -22,6 +22,7 @@ import ray
 from ray.tune.registry import register_env
 from ray import tune
 #
+# from ray.rllib.env.env_context import EnvContext
 
 from bluesky_env_ray import BlueSkyEnv
 
@@ -69,31 +70,49 @@ def main():
     # kwargs={'NodeID': 0,
     #         'n_cpu': 1,
     #         'scenfile': None})
-    #
 
+
+
+
+    # env_config = EnvConfig()
+    # env_config = 'kaas'
+
+    # test = BlueSkyEnv(env_config)
     ray.init()
-    # env_creator = lambda config:make_env(config,0,0)
+    # # env_creator = lambda config:make_env(config,0,0)
     register_env("Bluesky", env_creator)
-
-    # low_obs = np.array([-1,-1,-1,0,0,0])
-    # high_obs = np.array([1,1,1,1,1,1])
+    #
+    # # low_obs = np.array([-1,-1,-1,0,0,0])
+    # # high_obs = np.array([1,1,1,1,1,1])
     trainer = ppo.PPOAgent(env="Bluesky", config={
-            "log_level":"DEBUG",
-            'num_workers':1,
+            "log_level":"INFO",
+            'num_workers':4,
+            "vf_share_layers":True,
             'num_cpus_per_worker':1,
-            'num_envs_per_worker':1,
+            'num_envs_per_worker':4,
             'env_config':{'nr_nodes':12},
             'horizon':500,
             'batch_mode':'complete_episodes',
             'model':{
-                'fcnet_hiddens':[64,64]},
-    })
+                'fcnet_hiddens':[256,256],
+                "use_lstm":False
+            },
+            'sample_batch_size':200,
+            'train_batch_size':4000,
+            'vf_clip_param':50
 
+        })
+    #
+    #
+    #
+    #
+    trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
 
-
-
-    while True:
+    for i in range(151):
         trainer.train()
+        if i % 10 == 0:
+            checkpoint = trainer.save()
+            print("checkpoint saved at", checkpoint, i)
     # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
     # Action space is normalized heading, shape (1,)
     # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
@@ -103,25 +122,31 @@ def main():
     #
     # tune.run(
     #     "PPO",
-    #     name='Test1',
-    #     local_dir='~/ray_results/superduper',
-    #     checkpoint_freq=10,
+    #     name='Test3',
+    #     local_dir='~/ray_results/superduper2',
+    #     checkpoint_freq=5,
+    #     checkpoint_at_end=True,
     #     verbose=2,
-    #     stop={"training_iteration": 100},
+    #     resume='prompt',
+    #     stop={"training_iteration": 10},
+    #     restore='/home/dennis/ray_results/superduper2/Test3/PPO_Bluesky_0_2019-04-11_19-40-37e5tat2oe',
     #     config={
     #         "env":"Bluesky",
-    #         "log_level":"INFO",
+    #         "log_level":"DEBUG",
     #         'num_workers':4,
+    #         "vf_share_layers":True,
     #         'num_cpus_per_worker':1,
     #         'num_envs_per_worker':4,
     #         'env_config':{'nr_nodes':12},
     #         'horizon':500,
     #         'batch_mode':'complete_episodes',
     #         'model':{
-    #             'fcnet_hiddens':[64,64]
+    #             'fcnet_hiddens':[256,256],
+    #             "use_lstm":True
     #         },
     #         'sample_batch_size':200,
-    #         'train_batch_size':200
+    #         'train_batch_size':4000,
+    #         'vf_clip_param':50
     #
     #     },)
 
