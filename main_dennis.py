@@ -1,81 +1,195 @@
 # from spinup import td3
-import tensorflow as tf
-import multiprocessing
-import time
+# import tensorflow as tf
+# import multiprocessing
+# import time
 import gym
-import gym_bluesky
+# import gym_bluesky
 # from spinup.utils.test_policy import load_policy, run_policy
-import bluesky as bs
+# import bluesky as bs
 # from bluesky import tools
-from bluesky.network.client import Client
+# from bluesky.network.client import Client
 
-from stable_baselines.common.policies import MlpLnLstmPolicy, MlpPolicy
-from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
-from stable_baselines import PPO2
+# from stable_baselines.common.policies import MlpLnLstmPolicy, MlpPolicy
+# from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
+# from stable_baselines import PPO2
 # import stable_baselines
+
+import numpy as np
+import ray.rllib.agents.ppo as ppo
+
+
+import ray
+from ray.tune.registry import register_env
+from ray import tune
+#
+# from ray.rllib.env.env_context import EnvContext
+
+from bluesky_env_ray import BlueSkyEnv
+
+
+
+
 
 def main():
 
+    def make_env(i, n_cpu):
+        def _init():
+            env = gym.make('bluesky-v0', NodeID=i, n_cpu=n_cpu)
+            return env
+        return _init()
 
-    scenfile = ['./synthetics/super/super3.scn',
-                './synthetics/super/super3.scn',
-                './synthetics/super/super3.scn',
-                './synthetics/super/super3.scn',
-                './synthetics/super/super3_1.scn',
-                './synthetics/super/super3_1.scn',
-                './synthetics/super/super3_1.scn',
-                './synthetics/super/super3_1.scn',
-                './synthetics/super/super3_2.scn',
-                './synthetics/super/super3_2.scn',
-                './synthetics/super/super3_2.scn',
-                './synthetics/super/super3_2.scn',
-                './synthetics/super/super3_3.scn',
-                './synthetics/super/super3_3.scn',
-                './synthetics/super/super3_3.scn',
-                './synthetics/super/super3_3.scn',
-                ]
-
-    # env = gym.make('bluesky-v0', NodeID=0)
-    n_cpu = 16
-    env = SubprocVecEnv([make_env(i, n_cpu, scenfile[i]) for i in range(n_cpu)])
-
-    policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[256,256, dict(vf=[128,128], pi=[128,128])])
-    model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6_multi', n_steps=1000, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=8, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
-    model.learn(total_timesteps=25000000)
-    model.save("PPO2_2_Home2")
-
+    #
+    # # n_cpu = 8
+    # # env = SubprocVecEnv([make_env(i, n_cpu) for i in range(n_cpu)])
+    # #
+    # # policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
+    # # model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=4, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
+    # # model.learn(total_timesteps=2000000)
+    # # model.save("PPO2_1_222")
+    # #
     # model = PPO2.load("PPO2_1")
     # env = gym.make('bluesky-v0', NodeID=0)
     # for i_episode in range(20):
     #     obs = env.reset()
-    #     for t in range(5000):
+    #     while True:
     #         action, _states = model.predict(obs)
-    #         # print(action)
     #         obs, rewards, dones, info = env.step(action)
-    #         if dones:
+    #         # env.render(/)
+    #
+    #     # obs, rewards, dones, info =/
+    # #         if dones:
     #             print("Episode finished after {} timesteps".format(t+1))
     #             break
+    # #
+
+    #
+    ################### NEWWWWWWWWWWW TEST ##################################
+    # gym.envs.register(
+    # id='bluesky-v0',
+    # entry_point='gym_bluesky.envs:BlueSkyEnv',
+    # kwargs={'NodeID': 0,
+    #         'n_cpu': 1,
+    #         'scenfile': None})
 
 
 
 
+    # env_config = EnvConfig()
+    # env_config = 'kaas'
+
+    # test = BlueSkyEnv(env_config)
+    ray.init()
+    # # env_creator = lambda config:make_env(config,0,0)
+    register_env("Bluesky", env_creator)
+    #
+    # # low_obs = np.array([-1,-1,-1,0,0,0])
+    # # high_obs = np.array([1,1,1,1,1,1])
+    trainer = ppo.PPOAgent(env="Bluesky", config={
+            "log_level":"INFO",
+            'num_workers':4,
+            "vf_share_layers":True,
+            'num_cpus_per_worker':1,
+            'num_envs_per_worker':4,
+            'env_config':{'nr_nodes':12},
+            'horizon':500,
+            'batch_mode':'complete_episodes',
+            'model':{
+                'fcnet_hiddens':[256,256],
+                "use_lstm":False
+            },
+            'sample_batch_size':200,
+            'train_batch_size':4000,
+            'vf_clip_param':50
+
+        })
+    #
+    #
+    #
+    #
+    trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
+
+    for i in range(151):
+        trainer.train()
+        if i % 10 == 0:
+            checkpoint = trainer.save()
+            print("checkpoint saved at", checkpoint, i)
+    # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+    # Action space is normalized heading, shape (1,)
+    # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
 
 
-def make_env(node_id, n_cpu, scenfile):
-    """
-    Utility function for multiprocessed env.
 
-    :param env_id: (str) the environment ID
-    :param num_env: (int) the number of environments you wish to have in subprocesses
-    :param seed: (int) the inital seed for RNG
-    :param rank: (int) index of the subprocess
-    """
+    #
+    # tune.run(
+    #     "PPO",
+    #     name='Test3',
+    #     local_dir='~/ray_results/superduper2',
+    #     checkpoint_freq=5,
+    #     checkpoint_at_end=True,
+    #     verbose=2,
+    #     resume='prompt',
+    #     stop={"training_iteration": 10},
+    #     restore='/home/dennis/ray_results/superduper2/Test3/PPO_Bluesky_0_2019-04-11_19-40-37e5tat2oe',
+    #     config={
+    #         "env":"Bluesky",
+    #         "log_level":"DEBUG",
+    #         'num_workers':4,
+    #         "vf_share_layers":True,
+    #         'num_cpus_per_worker':1,
+    #         'num_envs_per_worker':4,
+    #         'env_config':{'nr_nodes':12},
+    #         'horizon':500,
+    #         'batch_mode':'complete_episodes',
+    #         'model':{
+    #             'fcnet_hiddens':[256,256],
+    #             "use_lstm":True
+    #         },
+    #         'sample_batch_size':200,
+    #         'train_batch_size':4000,
+    #         'vf_clip_param':50
+    #
+    #     },)
 
-    def _init():
-        env = gym.make('bluesky-v0', NodeID=node_id, n_cpu=n_cpu, scenfile=scenfile)
-        return env
+    # trainer = ppo.PPOAgent(env="Bluesky")
+    #     ,
+    #                        config={
+    #         "multiagent": {
+    #             "policy_graphs": {
+    #                 # the first tuple value is None -> uses default policy graph
+    #                 "SUP0": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP1": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP2": (None, obs_space, act_space, {"gamma": 0.99}),
+    #             },
+    #             'policy_mapping_fn':
+    #             lambda agent_id:
+    #                 "SUP"
+    #
+    #
+    #         },
+    #                        })
 
-    return _init
+    # while True:
+    #     print(trainer.train())
+
+    # tune.run(
+    #     "PPO",
+    #     stop={"training_iteration": 200},
+    #     config={
+    #         "env": bluesky_env.BlueSkyEnv,
+    #         "log_level": "DEBUG",
+    #         "num_sgd_iter": 10,
+    #         "multiagent": {
+    #             "policy_graphs": {
+    #                 # the first tuple value is None -> uses default policy graph
+    #                 "SUP0": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP1": (None, obs_space, act_space, {"gamma": 0.99}),
+    #                 "SUP2": (None, obs_space, act_space, {"gamma": 0.99})}}})
+
+
+def env_creator(env_config):
+    return BlueSkyEnv(env_config)
+
+
 # #
 # # #
 # model = PPO2.load("testsgjklasgjkl30")
@@ -158,6 +272,5 @@ def make_env(node_id, n_cpu, scenfile):
 #
 # print(up,right,bottom,left)
 if __name__ == '__main__':
-
-    main()
+     main()
 

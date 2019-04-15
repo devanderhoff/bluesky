@@ -6,4 +6,9 @@ register(
     kwargs={'NodeID': 0,
             'n_cpu': 1,
             'scenfile': None}
+
 )
+#kwargs={'env_config':{},
+            # 'NodeID': 0,
+            # 'n_cpu': 1,
+            # 'scenfile': None}
