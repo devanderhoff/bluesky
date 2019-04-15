@@ -26,7 +26,7 @@ def init_plugin():
 
         'update':          update,
 
-        # 'preupdate':       preupdate,
+        'preupdate':       preupdate,
 
         # If your plugin has a state, you will probably need a reset function to
         # clear the state in between simulations.
@@ -60,33 +60,35 @@ def update():
     data = dict(
         lat=traf.lat,
         lon=traf.lon,
-        hdg=traf.hdg
+        hdg=traf.hdg,
+        actwptlat=traf.actwp.lat,
+        actwptlon=traf.actwp.lon
     )
     sim.send_event(b'MLSTATEREPLY', data, myclientrte)
     # print('statereply')
     sim.pause()
-    sim.fastforward
+    # sim.fastforward
 
 def preupdate():
     global myclientrte
     # print('preupdate')
     if myclientrte is None:
         sim.pause()
-        sim.fastforward
+        # sim.fastforward
 
 def reset():
     global myclientrte
     # print('reset node' + str(myclientrte))
     myclientrte = None
     sim.pause()
-    sim.fastforward
+    # sim.fastforward
 
 
 def mlstep():
     global myclientrte
     myclientrte = stack.routetosender()
     # print('mlstep')
-    sim.fastforward
+    # sim.fastforward
     sim.op()
     # sim.fastforward(1)
 

@@ -16,32 +16,52 @@ from stable_baselines import PPO2
 
 def main():
 
-    # n_cpu = 8
-    # env = SubprocVecEnv([make_env(i, n_cpu) for i in range(n_cpu)])
-    #
-    # policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[128,128, dict(vf=[128,128], pi=[128,128])])
-    # model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6', n_steps=500, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=4, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
-    # model.learn(total_timesteps=2000000)
-    # model.save("PPO2_1")
 
-    model = PPO2.load("PPO2_1")
-    env = gym.make('bluesky-v0', NodeID=0)
-    for i_episode in range(20):
-        obs = env.reset()
-        for t in range(5000):
-            action, _states = model.predict(obs)
-            # print(action)
-            obs, rewards, dones, info = env.step(action)
-            if dones:
-                print("Episode finished after {} timesteps".format(t+1))
-                break
+    scenfile = ['./synthetics/super/super3.scn',
+                './synthetics/super/super3.scn',
+                './synthetics/super/super3.scn',
+                './synthetics/super/super3.scn',
+                './synthetics/super/super3_1.scn',
+                './synthetics/super/super3_1.scn',
+                './synthetics/super/super3_1.scn',
+                './synthetics/super/super3_1.scn',
+                './synthetics/super/super3_2.scn',
+                './synthetics/super/super3_2.scn',
+                './synthetics/super/super3_2.scn',
+                './synthetics/super/super3_2.scn',
+                './synthetics/super/super3_3.scn',
+                './synthetics/super/super3_3.scn',
+                './synthetics/super/super3_3.scn',
+                './synthetics/super/super3_3.scn',
+                ]
+
+    # env = gym.make('bluesky-v0', NodeID=0)
+    n_cpu = 16
+    env = SubprocVecEnv([make_env(i, n_cpu, scenfile[i]) for i in range(n_cpu)])
+
+    policy_kwargs = dict(act_fun=tf.nn.tanh, net_arch=[256,256, dict(vf=[128,128], pi=[128,128])])
+    model = PPO2(MlpPolicy, env, verbose=0, tensorboard_log='/home/dennis/tensorboard/PPO2_2e6_multi', n_steps=1000, learning_rate=0.003, vf_coef= 0.8, noptepochs=4, nminibatches=8, full_tensorboard_log=True, policy_kwargs=policy_kwargs,ent_coef=0.01)
+    model.learn(total_timesteps=25000000)
+    model.save("PPO2_2_Home2")
+
+    # model = PPO2.load("PPO2_1")
+    # env = gym.make('bluesky-v0', NodeID=0)
+    # for i_episode in range(20):
+    #     obs = env.reset()
+    #     for t in range(5000):
+    #         action, _states = model.predict(obs)
+    #         # print(action)
+    #         obs, rewards, dones, info = env.step(action)
+    #         if dones:
+    #             print("Episode finished after {} timesteps".format(t+1))
+    #             break
 
 
 
 
 
 
-def make_env(node_id, n_cpu):
+def make_env(node_id, n_cpu, scenfile):
     """
     Utility function for multiprocessed env.
 
@@ -52,7 +72,7 @@ def make_env(node_id, n_cpu):
     """
 
     def _init():
-        env = gym.make('bluesky-v0', NodeID=node_id, n_cpu=n_cpu)
+        env = gym.make('bluesky-v0', NodeID=node_id, n_cpu=n_cpu, scenfile=scenfile)
         return env
 
     return _init
