@@ -41,7 +41,7 @@ class BlueSkyEnv(gym.Env):
             time.sleep(5)
 
         self.myclient = Client()
-        self.myclient.connect(event_port=52000, stream_port=52001)
+        self.myclient.connect(event_port=11000, stream_port=11001)
         self.myclient.receive(1000)
         self.myclient.actnode(self.myclient.servers[self.myclient.host_id]['nodes'][self.NodeID])
         self.myclient.event_received.connect(on_event)
@@ -107,7 +107,7 @@ class BlueSkyEnv(gym.Env):
 
         # Calculate distance to plane and waypoint. This method will change when more research is done into state def.
         dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
-        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], 0.5, 0.5)
+        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwptlat'][0], recdata['actwptlon'][0])
 
         # Set state to initial state.
         self.state = np.array([recdata['lat'][0],recdata['lon'][0],
@@ -147,19 +147,22 @@ class BlueSkyEnv(gym.Env):
 
         # Do some intermediate state update calculations.
         dist_plane = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['lat'][1], recdata['lon'][1])
-        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], 0.5, 0)
+        dist_wpt = tools.geo.kwikdist(recdata['lat'][0], recdata['lon'][0], recdata['actwptlat'][0], recdata['actwptlon'][0])
 
         # Assign rewards if goals states are met or any other arbitary rewards.
         if dist_plane <= self.los:
             reward = reward - 100
+            # print('los failure')
             done = True
 
         if dist_wpt <= self.wpt_reached:
             reward = reward + 100
+            # print('wpt reached')
             done = True
 
-        # if self.ep >= 500:
-        #     done = True
+        if self.ep >= 1000:
+            # print('steps reached')
+            done = True
 
         reward = reward + 3/dist_wpt
 
