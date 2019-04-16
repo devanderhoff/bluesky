@@ -3,7 +3,7 @@ import time, datetime
 # Local imports
 import bluesky as bs
 from bluesky import settings, stack
-from bluesky.tools import datalog, areafilter, plugin, plotter
+from bluesky.tools import datalog, areafilter, plugin, plotter, simtime
 from bluesky.tools.misc import txt2tim, tim2txt
 
 
@@ -61,6 +61,7 @@ def Simulation(detached):
 
         def step(self):
             ''' Perform a simulation timestep. '''
+            super().step()
             # When running at a fixed rate, or when in hold/init,
             # increment system time with sysdt and calculate remainder to sleep.
 
@@ -116,7 +117,7 @@ def Simulation(detached):
                 datalog.postupdate()
 
                 # Update sim and UTC time for the next timestep
-                self.simt += self.simdt
+                self.simt, self.simdt = simtime.step()
                 self.utc += datetime.timedelta(seconds=self.simdt)
 
             # Always update syst
@@ -151,6 +152,7 @@ def Simulation(detached):
             self.syst = -1.0
             self.simt = 0.0
             self.simdt = settings.simdt
+            simtime.reset()
             self.utc = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             self.ffmode = False
             self.setDtMultiplier(1.0)
@@ -162,9 +164,11 @@ def Simulation(detached):
             areafilter.reset()
             bs.scr.reset()
 
-        def setDt(self, dt):
-            self.simdt = abs(dt)
-            self.sysdt = self.simdt / self.dtmult
+        def setdt(self, dt=None, target='simdt'):
+            if dt is not None and target == 'simdt':
+                self.simdt = abs(dt)
+                self.sysdt = self.simdt / self.dtmult
+            return simtime.setdt(dt, target)
 
         def setDtMultiplier(self, mult):
             self.dtmult = mult
@@ -222,7 +226,9 @@ def Simulation(detached):
                 # Send list of stack functions available in this sim to gui at start
                 stackdict = {cmd : val[0][len(cmd) + 1:] for cmd, val in stack.cmddict.items()}
                 shapes = [shape.raw for shape in areafilter.areas.values()]
-                simstate = dict(pan=bs.scr.def_pan, zoom=bs.scr.def_zoom, stackcmds=stackdict, shapes=shapes)
+                simstate = dict(pan=bs.scr.def_pan, zoom=bs.scr.def_zoom,
+                    stackcmds=stackdict, stacksyn=stack.cmdsynon, shapes=shapes,
+                    custacclr=bs.scr.custacclr, custgrclr=bs.scr.custgrclr)
                 self.send_event(b'SIMSTATE', simstate, target=sender_rte)
             else:
                 # This is either an unknown event or a gui event.

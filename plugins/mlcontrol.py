@@ -10,7 +10,7 @@ myclientrte = None
 def init_plugin():
 
     # Addtional initilisation code
-    # sim.send_event(b'STACKCMD', 'addnodes 3')
+
     # Configuration parameters
     config = {
         # The name of your plugin
@@ -81,6 +81,16 @@ def reset():
     sim.pause()
     sim.fastforward
 
+        alt=traf.alt
+    )
+    sim.send_event(b'MLSTATEREPLY', data, myclientrte)
+    sim.pause()
+
+def preupdate():
+    pass
+
+def reset():
+    pass
 
 def mlstep():
     global myclientrte

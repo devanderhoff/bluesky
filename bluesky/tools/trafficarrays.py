@@ -8,7 +8,7 @@ except ImportError:
     from collections import Collection
 import numpy as np
 
-defaults = {"float": 0.0, "int": 0, "bool": False, "S": "", "str": ""}
+defaults = {"float": 0.0, "int": 0, "uint":0, "bool": False, "S": "", "str": ""}
 
 
 class RegisterElementParameters():
@@ -85,11 +85,7 @@ class TrafficArrays(object):
 
         for v in self._ArrVars:  # Numpy array
             # Get type without byte length
-            fulltype = str(self._Vars[v].dtype)
-            vartype = ""
-            for c in fulltype:
-                if not c.isdigit():
-                    vartype = vartype + c
+            vartype = ''.join(c for c in str(self._Vars[v].dtype) if c.isalpha())
 
             # Get default value
             if vartype in defaults:

@@ -5,7 +5,7 @@ import numpy as np
 # Local imports
 import bluesky as bs
 from bluesky import stack
-from bluesky.tools import Timer
+from bluesky.tools import Timer, areafilter
 
 
 class ScreenIO(object):
@@ -31,8 +31,11 @@ class ScreenIO(object):
         self.client_pan  = dict()
         self.client_zoom = dict()
         self.client_ar   = dict()
+        self.route_acid  = dict()
 
-        self.route_acid  = None
+        # Dicts of custom aircraft and group colors
+        self.custacclr = dict()
+        self.custgrclr = dict()
 
         # Timing bookkeeping counters
         self.prevtime    = 0.0
@@ -54,6 +57,8 @@ class ScreenIO(object):
             self.samplecount += 1
 
     def reset(self):
+        self.custacclr = dict()
+        self.custgrclr = dict()
         self.samplecount = 0
         self.prevcount   = 0
         self.prevtime    = 0.0
@@ -96,6 +101,24 @@ class ScreenIO(object):
             self.client_zoom.clear()
 
         bs.sim.send_event(b'PANZOOM', dict(zoom=zoom, absolute=absolute))
+
+    def color(self, name, r, g, b):
+        ''' Set custom color for aircraft or shape. '''
+        data = dict(color=(r, g, b))
+        if name in bs.traf.groups:
+            groupmask = bs.traf.groups.groups[name]
+            data['groupid'] = groupmask
+            self.custgrclr[groupmask] = (r, g, b)
+        elif name in bs.traf.id:
+            data['acid'] = name
+            self.custacclr[name] = (r, g, b)
+        elif areafilter.hasArea(name):
+            data['polyid'] = name
+            areafilter.areas[name].raw['color'] = (r, g, b)
+        else:
+            return False, 'No object found with name ' + name
+        bs.sim.send_event(b'COLOR', data)
+        return True
 
     def pan(self, *args):
         ''' Move center of display, relative of to absolute position lat,lon '''
@@ -141,7 +164,7 @@ class ScreenIO(object):
 
     def showroute(self, acid):
         ''' Toggle show route for this aircraft '''
-        self.route_acid = acid
+        self.route_acid[stack.sender()] = acid
         return True
 
     def addnavwpt(self, name, lat, lon):
@@ -201,6 +224,7 @@ class ScreenIO(object):
         data['tas']        = bs.traf.tas
         data['cas']        = bs.traf.cas
         data['gs']         = bs.traf.gs
+        data['ingroup']    = bs.traf.groups.ingroup
         data['inconf'] = bs.traf.asas.inconf
         data['tcpamax'] = bs.traf.asas.tcpamax
         data['nconf_cur'] = len(bs.traf.asas.confpairs_unique)
@@ -238,10 +262,10 @@ class ScreenIO(object):
         bs.sim.send_stream(b'ACDATA', data)
 
     def send_route_data(self):
-        if self.route_acid:
+        for sender, acid in self.route_acid.items():
             data               = dict()
-            data['acid']       = self.route_acid
-            idx   = bs.traf.id2idx(self.route_acid)
+            data['acid']       = acid
+            idx   = bs.traf.id2idx(acid)
             if idx >= 0:
                 route          = bs.traf.ap.route[idx]
                 data['iactwp'] = route.iactwp
@@ -258,4 +282,4 @@ class ScreenIO(object):
 
                 data['wpname'] = route.wpname
 
-            bs.sim.send_stream(b'ROUTEDATA', data)  # Send route data to GUI
+            bs.sim.send_stream(b'ROUTEDATA' + (sender or b'*'), data)  # Send route data to GUI

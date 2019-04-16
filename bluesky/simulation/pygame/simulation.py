@@ -4,7 +4,6 @@ from bluesky.tools import datalog, areafilter, plugin
 from bluesky.tools.misc import txt2tim,tim2txt
 from bluesky import stack
 from bluesky.traffic.metric import Metric
-from bluesky.tools.network import StackTelnetServer
 
 onedayinsec = 24*3600 # [s] time of one day in seconds for clock time
 
@@ -52,8 +51,6 @@ class Simulation:
         print("Setting up Traffic simulation")
         self.metric = Metric()
 
-        # Additional modules
-        self.telnet_in   = StackTelnetServer()
 
     def update(self):
 
@@ -160,7 +157,7 @@ class Simulation:
         self.tprev = self.simt-0.001  # allow 1 msec step rto avoid div by zero
         return
 
-    def setDt(self, dt):
+    def setdt(self, dt):
         self.fixdt = abs(dt)
 
     def setDtMultiplier(self, mult=None):
