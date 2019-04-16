@@ -16,6 +16,7 @@ import gym
 
 import numpy as np
 import ray.rllib.agents.ppo as ppo
+import ray.rllib.agents.ddpg as ddpg
 
 
 import ray
@@ -32,11 +33,11 @@ from bluesky_env_ray import BlueSkyEnv
 
 def main():
 
-    def make_env(i, n_cpu):
-        def _init():
-            env = gym.make('bluesky-v0', NodeID=i, n_cpu=n_cpu)
-            return env
-        return _init()
+    # def make_env(i, n_cpu):
+    #     def _init():
+    #         env = gym.make('bluesky-v0', NodeID=i, n_cpu=n_cpu)
+    #         return env
+    #     return _init()
 
     #
     # # n_cpu = 8
@@ -102,11 +103,28 @@ def main():
             'vf_clip_param':50
 
         })
+    trainer = ddpg.DDPGAgent(env="Bluesky", config={
+            "log_level":"INFO",
+            'num_workers':4,
+            # "vf_share_layers":True,
+            'num_cpus_per_worker':1,
+            'num_envs_per_worker':4,
+            'env_config':{'nr_nodes':12},
+            'horizon':500,
+            # 'batch_mode':'complete_episodes',
+            # 'model':{
+            #     'fcnet_hiddens':[256,256],
+            #     "use_lstm":False
+            # },
+            # 'sample_batch_size':200,
+            # 'train_batch_size':4000,
+            # 'vf_clip_param':50
+
+        })
     #
     #
     #
-    #
-    trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
+    # trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
 
     for i in range(151):
         trainer.train()

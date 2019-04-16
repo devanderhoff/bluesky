@@ -172,7 +172,7 @@ class BlueSkyEnv(MultiAgentEnv):
         #                        normalizer(dist_wpt, 'DistToNorm', self.min_dist_waypoint, self.max_dist_waypoint)
         #                        ])
 
-        self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
+        # self.state_object = np.array([recdata['lat'][1], recdata['lon'][1], recdata['hdg'][1]])
         self.ep = 0
 
         # Reset data flag when data has been processed.
