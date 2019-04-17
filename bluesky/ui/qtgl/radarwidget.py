@@ -163,10 +163,12 @@ class RadarWidget(QGLWidget):
         # Shape data change
         if 'SHAPE' in changed_elems:
             if nodedata.polys:
-                contours, fills = zip(*nodedata.polys.values())
-                # Create contour buffer
+                contours, fills, colors = zip(*nodedata.polys.values())
+                # Create contour buffer with color
                 buf = np.concatenate(contours)
                 update_buffer(self.allpolysbuf, buf)
+                buf = np.concatenate(colors)
+                update_buffer(self.allpolysclrbuf, buf)
                 self.allpolys.set_vertex_count(len(buf) // 2)
 
                 # Create fill buffer
@@ -247,6 +249,7 @@ class RadarWidget(QGLWidget):
 
         self.polyprevbuf = create_empty_buffer(MAX_POLYPREV_SEGMENTS * 8, usage=gl.GL_DYNAMIC_DRAW)
         self.allpolysbuf = create_empty_buffer(MAX_ALLPOLYS_SEGMENTS * 16, usage=gl.GL_DYNAMIC_DRAW)
+        self.allpolysclrbuf = create_empty_buffer(MAX_ALLPOLYS_SEGMENTS * 8, usage=gl.GL_DYNAMIC_DRAW)
         self.allpfillbuf = create_empty_buffer(MAX_ALLPOLYS_SEGMENTS * 24, usage=gl.GL_DYNAMIC_DRAW)
         self.routebuf = create_empty_buffer(MAX_ROUTE_LENGTH * 8, usage=gl.GL_DYNAMIC_DRAW)
         self.routewplatbuf = create_empty_buffer(MAX_ROUTE_LENGTH * 4, usage=gl.GL_DYNAMIC_DRAW)
@@ -277,7 +280,7 @@ class RadarWidget(QGLWidget):
         self.polyprev = RenderObject(gl.GL_LINE_LOOP, vertex=self.polyprevbuf, color=palette.previewpoly)
 
         # Fixed polygons
-        self.allpolys = RenderObject(gl.GL_LINES, vertex=self.allpolysbuf, color=palette.polys)
+        self.allpolys = RenderObject(gl.GL_LINES, vertex=self.allpolysbuf, color=self.allpolysclrbuf)
         self.allpfill = RenderObject(gl.GL_TRIANGLES, vertex=self.allpfillbuf, color=np.append(palette.polys, 50))
 
         # ------- SSD object -----------------------------
@@ -620,7 +623,7 @@ class RadarWidget(QGLWidget):
         if streamname == b'ACDATA':
             self.acdata = ACDataEvent(data)
             self.update_aircraft_data(self.acdata)
-        elif streamname == b'ROUTEDATA':
+        elif streamname[:9] == b'ROUTEDATA':
             self.routedata = RouteDataEvent(data)
             self.update_route_data(self.routedata)
 
@@ -719,9 +722,9 @@ class RadarWidget(QGLWidget):
             selssd = np.zeros(self.naircraft, dtype=np.uint8)
             confidx = 0
 
-            zdata = zip(data.id, data.inconf, data.tcpamax, data.trk, data.gs,
+            zdata = zip(data.id, data.ingroup, data.inconf, data.tcpamax, data.trk, data.gs,
                         data.cas, data.vs, data.alt, data.lat, data.lon)
-            for i, (acid, inconf, tcpa, trk, gs, cas, vs, alt, lat, lon) in enumerate(zdata):
+            for i, (acid, ingroup, inconf, tcpa, trk, gs, cas, vs, alt, lat, lon) in enumerate(zdata):
                 if i >= MAX_NAIRCRAFT:
                     break
 
@@ -746,7 +749,15 @@ class RadarWidget(QGLWidget):
                     cpalines[4 * confidx : 4 * confidx + 4] = [lat, lon, lat1, lon1]
                     confidx += 1
                 else:
-                    color[i, :] = palette.aircraft + (255,)
+                    # Get custom color if available, else default
+                    rgb = palette.aircraft
+                    if ingroup:
+                        for groupmask, groupcolor in actdata.custgrclr.items():
+                            if ingroup & groupmask:
+                                rgb = groupcolor
+                                break
+                    rgb = actdata.custacclr.get(acid, rgb)
+                    color[i, :] = tuple(rgb) + (255,)
 
                 #  Check if aircraft is selected to show SSD
                 if actdata.ssd_all or acid in actdata.ssd_ownship:

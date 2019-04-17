@@ -42,8 +42,9 @@ static PyObject* casas_detect(PyObject* self, PyObject* args)
         double tcpamax_ac = 0.0;
 
         // Return values
-        PyDoubleArrayAttr inconf(size), tcpamax(size);
-        PyListAttr confpairs, lospairs, qdr, dist, tcpa, tinconf;
+        PyDoubleArrayAttr tcpamax(size);
+        PyBoolArrayAttr inconf(size);
+        PyListAttr confpairs, lospairs, qdr, dist, dcpa, tcpa, tinconf;
 
         // Pre-calculate intruder data
         for (unsigned int i = 0; i < size; ++i) {
@@ -54,6 +55,7 @@ static PyObject* casas_detect(PyObject* self, PyObject* args)
         for (unsigned int i = 0; i < size; ++i) {
             ll1.init(*lat1.ptr * DEG2RAD, *lon1.ptr * DEG2RAD);
             pll2 = ll2.begin();
+            acinconf = NPY_FALSE;
             for (unsigned int j = 0; j < size; ++j) {
                 if (i != j) {
                     // Vectical detection first
@@ -80,6 +82,7 @@ static PyObject* casas_detect(PyObject* self, PyObject* args)
                                 Py_DECREF(pair);
                                 qdr.append(confhor.q * RAD2DEG);
                                 dist.append(confhor.d);
+                                dcpa.append(confhor.dcpa);
                                 tcpa.append(confhor.tcpa);
                                 tinconf.append(tin);
                             }
@@ -99,7 +102,7 @@ static PyObject* casas_detect(PyObject* self, PyObject* args)
             lat1.ptr++; lon1.ptr++; trk1.ptr++; gs1.ptr++; alt1.ptr++; vs1.ptr++;
         }
 
-        return PyTuple_Pack(8, confpairs.attr, lospairs.attr, inconf.arr, tcpamax.arr, qdr.attr, dist.attr, tcpa.attr, tinconf.attr);
+        return PyTuple_Pack(9, confpairs.attr, lospairs.attr, inconf.arr, tcpamax.arr, qdr.attr, dist.attr, dcpa.attr, tcpa.attr, tinconf.attr);
     }
 
     Py_RETURN_NONE;

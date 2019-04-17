@@ -18,8 +18,10 @@ from random import seed
 import re
 import os
 import os.path
+import webbrowser
 import subprocess
 import numpy as np
+from matplotlib import colors
 import bluesky as bs
 from bluesky.tools import geo, areafilter, plugin, plotter
 from bluesky.tools.aero import kts, ft, fpm, tas2cas, density
@@ -49,6 +51,8 @@ cmdsynon  = {"ADDAIRWAY": "ADDAWY",
              "AIRWAYS": "AIRWAY",
              "CALL": "PCALL",
              "CHDIR": "CD",
+             "COL": "COLOR",
+             "COLOUR": "COLOR",
              "CONTINUE": "OP",
              "CREATE": "CRE",
              "CLOSE": "QUIT",
@@ -128,8 +132,8 @@ sender_rte = None  # bs net route to sender
 
 # When SAVEIC is used, we will also have a recoding scenario file handle
 savefile = None # File object of recording scenario file
-defexcl = ["PAN","ZOOM","HOLD","POS","INSEDIT","SAVEIC","QUIT","PCALL","CALC","FF",
-           "IC","OP","HOLD","RESET","MCRE","CRE","TRAFGEN"] # Commands to be excluded, default
+defexcl = ["PAN","ZOOM","HOLD","POS","INSEDIT","SAVEIC","QUIT","PCALL","PLOT","CALC","FF",
+           "IC","OP","HOLD","RESET","MCRE","CRE","TRAFGEN","LISTRTE"] # Commands to be excluded, default
 saveexcl = defexcl
 saveict0 = 0.0 # simt time of moment of SAVEIC command, 00:00:00.00 in recorded file
 
@@ -188,7 +192,7 @@ def init(startup_scnfile):
         ],
         "ADDWPT": [
             "ADDWPT acid, (wpname/lat,lon/FLYBY/FLYOVER/ TAKEOFF,APT/RWY),[alt,spd,afterwp]",
-            "acid,wpt,[alt/txt,spd,wpinroute,wpinroute]",
+            "acid,wpt/txt,[alt,spd,wpinroute,wpinroute]",
             #
             # lambda *arg: short-hand for using function output as argument, equivalent with:
             #
@@ -259,11 +263,18 @@ def init(startup_scnfile):
             lambda idx, *args: bs.traf.ap.route[idx].beforeaddwptStack(idx, *args),
             "Before waypoint, add a waypoint to route of aircraft (FMS)"
         ],
+        "BLUESKY": [
+            "BLUESKY",
+            "",
+            singbluesky,
+            "Sing"
+        ],
         "BENCHMARK": [
             "BENCHMARK [scenfile,time]",
-            "[txt,time]",
+            "[string,time]",
             bs.sim.benchmark,
             "Run benchmark"
+
         ],
         "BOX": [
             "BOX name,lat,lon,lat,lon,[top,bottom]",
@@ -294,6 +305,12 @@ def init(startup_scnfile):
             "txt,latlon,float,[alt,alt]",
             lambda name, *coords: areafilter.defineArea(name, 'CIRCLE', coords[:3], *coords[3:]),
             "Define a circle-shaped area"
+        ],
+        "COLOR": [
+            "COLOR name,color (named color or r,g,b)",
+            "txt,color",
+            bs.scr.color,
+            "Set a custom color for an aircraft or shape"
         ],
         "CRE": [
             "CRE acid,type,lat,lon,hdg,alt,spd",
@@ -328,11 +345,12 @@ def init(startup_scnfile):
         ],
         "DEL": [
             "DEL acid/ALL/WIND/shape",
-            "acid/txt",
-            lambda a:   bs.traf.delete(a)    if isinstance(a, int) \
-                   else bs.traf.delete_all   if a == "ALL"\
-                   else bs.traf.wind.clear() if a == "WIND" \
-                   else areafilter.deleteArea(a),
+            "acid/txt,...",
+            lambda *a:
+                bs.traf.wind.clear() if isinstance(a[0], str) and a[0] == "WIND" else \
+                areafilter.deleteArea(a[0]) if isinstance(a[0], str) else \
+                bs.traf.groups.delgroup(a[0]) if hasattr(a[0], 'groupname') else \
+                bs.traf.delete(a),
             "Delete command (aircraft, wind, area)"
         ],
         "DELAY": [
@@ -344,13 +362,13 @@ def init(startup_scnfile):
         "DELRTE": [
             "DELRTE acid",
             "acid",
-            lambda idx: bs.traf.ap.route[idx].delrte(),
+            lambda idx: bs.traf.ap.route[idx].delrte(idx),
             "Delete for this a/c the complete route/dest/orig (FMS)"
         ],
         "DELWPT": [
             "DELWPT acid,wpname",
             "acid,wpinroute",
-            lambda idx, wpname: bs.traf.ap.route[idx].delwpt(wpname),
+            lambda idx, wpname: bs.traf.ap.route[idx].delwpt(wpname,idx),
             "Delete a waypoint from a route (FMS)"
         ],
         "DEST": [
@@ -378,9 +396,9 @@ def init(startup_scnfile):
             "Show extended help window for given command, or the main documentation page if no command is given."
         ],
         "DT": [
-            "DT dt",
-            "float",
-            bs.sim.setDt,
+            "DT [dt] OR [target,dt]",
+            "[float/txt,float]",
+            lambda *args: bs.sim.setdt(*reversed(args)),
             "Set simulation time step"
         ],
         "DTLOOK": [
@@ -444,6 +462,15 @@ def init(startup_scnfile):
             bs.traf.wind.get,
             "Get wind at a specified position (and optionally at altitude)"
         ],
+        "GROUP": [
+            "GROUP [grname, (areaname OR acid,...) ]",
+            "[txt,acid/txt,...]",
+            bs.traf.groups.group,
+            "Add aircraft to a group. OR all aircraft in given area.\n" +
+            "Returns list of groups when no argument is passed.\n" +
+            "Returns list of aircraft in group when only a groupname is passed.\n" +
+            "A group is created when a group with the given name doesn't exist yet."
+        ],
         "HDG": [
             "HDG acid,hdg (deg,True)",
             "acid,float",
@@ -473,6 +500,12 @@ def init(startup_scnfile):
             "string",
             bs.scr.cmdline,
             "Insert text op edit line in command window"
+        ],
+        "LEGEND": [
+            "LEGEND label1, ..., labeln",
+            "txt,...",
+            lambda *labels: plotter.legend(labels),
+            "Add a legend to the last created plot"
         ],
         "LINE": [
             "LINE name,lat,lon,lat,lon",
@@ -745,7 +778,12 @@ def init(startup_scnfile):
             bs.traf.trails.setTrails,
             "Toggle aircraft trails on/off"
         ],
-
+        "UNGROUP": [
+            "UNGROUP grname, acid",
+            "txt,acid,...",
+            bs.traf.groups.ungroup,
+            "Remove aircraft from a group"
+        ],
         "VNAV": [
             "VNAV acid,[ON/OFF]",
             "acid,[onoff]",
@@ -1050,17 +1088,14 @@ def openfile(fname, pcall_arglst=None, mergeWithExisting=False):
 
     # Check whether file exists
 
-    # Split the incoming filename into a path, a filename and an extension
-    path, fname = os.path.split(os.path.normpath(fname))
-    base, ext = os.path.splitext(fname)
-    path = path or os.path.normpath(settings.scenario_path)
+    # Split the incoming filename into a path + filename and an extension
+    base, ext = os.path.splitext(fname.replace('\\', '/'))
+    if not os.path.isabs(base):
+        base = os.path.join(settings.scenario_path, base)
     ext = ext or '.scn'
 
-
     # The entire filename, possibly with added path and extension
-    fname_full = os.path.join(path, base + ext)
-
-
+    fname_full = os.path.normpath(base + ext)
 
     # If timestamps in file should be interpreted as relative we need to add
     # the current simtime to every timestamp
@@ -1068,14 +1103,8 @@ def openfile(fname, pcall_arglst=None, mergeWithExisting=False):
 
     # If this is a relative path we need to prefix scenario folder
     if not os.path.exists(fname_full):
-        if ".scn" not in orgfname.lower():
-            orgfname = orgfname+".scn"
-
-        if os.path.exists(settings.scenario_path + "/" + orgfname):
-            fname_full = settings.scenario_path + "/" + orgfname
-        else:
-            print("Openfile error: Cannot file", fname_full)
-            return False, "Error: cannot find file: " + fname_full
+        print("Openfile error: Cannot find file", fname_full)
+        return False, "Error: cannot find file: " + fname_full
 
     # Split scenario file line in times and commands
     if not mergeWithExisting:
@@ -1515,16 +1544,17 @@ class Argparser:
                 result = self.parse_arg(argtypei)
                 if result:
                     # No value = None when this is allowed because it is an optional argument
-                    if None in result:
-                        if not self.argisopt[curtype]:
-                            self.error = 'No value given for mandatory argument ' + \
-                                self.argtypes[curtype]
-                            return False
-                        # If we have other default values than None, use those
-                        for i, v in enumerate(result):
-                            if v is None and self.argdefaults:
-                                result[i] = self.argdefaults[0]
-                                print('using default value from function: {}'.format(result[i]))
+                    if not isinstance(result[0],np.ndarray):
+                        if None in result:
+                            if not self.argisopt[curtype]:
+                                self.error = 'No value given for mandatory argument ' + \
+                                    self.argtypes[curtype]
+                                return False
+                            # If we have other default values than None, use those
+                            for i, v in enumerate(result):
+                                if v is None and self.argdefaults:
+                                    result[i] = self.argdefaults[0]
+                                    print('using default value from function: {}'.format(result[i]))
 
                     self.arglist += result
 
@@ -1573,16 +1603,19 @@ class Argparser:
             self.argstring = ''
 
         elif argtype == "acid":  # aircraft id => parse index
-            idx = bs.traf.id2idx(curarg)
+            if curarg in bs.traf.groups:
+                idx = bs.traf.groups.listgroup(curarg)
+            else:
+                idx = bs.traf.id2idx(curarg)
 
-            if idx < 0:
-                self.error += curarg + " not found"
-                return False
+                if idx < 0:
+                    self.error += curarg + " not found"
+                    return False
 
-            # Update ref position for navdb lookup
-            Argparser.reflat = bs.traf.lat[idx]
-            Argparser.reflon = bs.traf.lon[idx]
-            self.refac   = idx
+                # Update ref position for navdb lookup
+                Argparser.reflat = bs.traf.lat[idx]
+                Argparser.reflon = bs.traf.lon[idx]
+                self.refac   = idx
             result  = [idx]
 
         # Empty arg or wildcard
@@ -1750,6 +1783,18 @@ class Argparser:
             except ValueError:
                 self.error += 'Could not parse "' + curarg + '" as time'
                 return False
+        elif argtype == 'color':
+            try:
+                if curarg.isnumeric():
+                    g, args = getnextarg(args)
+                    b, args = getnextarg(args)
+                    result = [int(curarg), int(g), int(b)]
+                else:
+                    result = [int(255 * i) for i in colors.to_rgb(curarg)]
+            except ValueError:
+                self.error += 'Could not parse "' + curarg + '" as color'
+                return False
+
         else:
             # Argument not found: return False
             self.error += 'Unknown argument type: ' + argtype
@@ -1787,3 +1832,7 @@ def makedoc():
                     for arg in re_args.findall(lst[0])[1:]:
                         f.write(arg + '|     |   |\n')
                 f.write('\n[[Back to command reference.|Command Reference]]\n')
+
+def singbluesky():
+    webbrowser.open_new("https://youtu.be/aQUlA8Hcv4s")
+    return True

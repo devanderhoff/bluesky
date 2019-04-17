@@ -9,15 +9,29 @@ from bluesky.tools import varexplorer as ve
 plots = list()
 
 
-def plot(*args):
-    ''' Stack function to select a set of variables to plot.
+def plot(varx='', vary='', dt=1.0, fig=None, **params):
+    ''' Select a set of variables to plot.
         Arguments: varx, vary, dt, color, fig. '''
     try:
-        plots.append(Plot(*args))
+        newplot = Plot(varx, vary, dt, fig, **params)
+        plots.append(newplot)
         return True
     except IndexError as e:
         return False, e.args[0]
 
+
+def legend(legend, fig=None):
+    ''' Set a legend for a figure. '''
+    try:
+        # Get the plot with the corresponding figure number
+        p = plots[-1] if fig is None else next(
+            plot for plot in plots if plot.fig == fig)
+
+        data = {p.fig: dict(legend=legend)}
+        bs.net.send_stream(p.stream_id, data)
+        return True
+    except IndexError as e:
+        return False, e.args[0]
 
 def update(simt):
     ''' Periodic update function for the plotter. '''
@@ -25,7 +39,7 @@ def update(simt):
     for plot in plots:
         if plot.tnext <= simt:
             plot.tnext += plot.dt
-            streamdata[plot.stream_id][plot.fig] = (plot.x.get(), plot.y.get(), plot.color)
+            streamdata[plot.stream_id][plot.fig] = dict(x=plot.x.get(), y=plot.y.get())
 
     for streamname, data in streamdata.items():
         bs.net.send_stream(streamname, data)
@@ -38,12 +52,12 @@ class Plot(object):
 
     maxfig = 0
 
-    def __init__(self, varx='', vary='', dt=1.0, color=None, fig=None):
+    def __init__(self, varx='', vary='', dt=1.0, fig=None, **params):
         self.x = ve.findvar(varx if vary else 'simt')
         self.y = ve.findvar(vary or varx)
         self.dt = dt
         self.tnext = bs.sim.simt
-        self.color = color
+        self.params = params
         if not fig:
             fig = Plot.maxfig
             Plot.maxfig += 1
@@ -52,10 +66,14 @@ class Plot(object):
 
         self.fig = fig
 
-        self.stream_id = b'PLOT' + bs.stack.sender()
+        self.stream_id = b'PLOT' + (bs.stack.sender() or b'*')
 
         if None in (self.x, self.y):
             raise IndexError('Variable {} not found'.format(varx if self.x is None else (vary or varx)))
 
-        if not self.x.is_num() or not self.y.is_num():
-            raise IndexError('Variable {} not numeric'.format(varx if not self.x.is_num() else (vary or varx)))
+        # if not self.x.is_num() or not self.y.is_num():
+        #     raise IndexError('Variable {} not numeric'.format(varx if not self.x.is_num() else (vary or varx)))
+        bs.net.send_stream(self.stream_id, {self.fig: params})
+
+    def send(self):
+        bs.net.send_stream(self.stream_id, {self.fig : dict(x=self.x.get(), y=self.y.get())})

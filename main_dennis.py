@@ -5,7 +5,7 @@
 import gym
 # import gym_bluesky
 # from spinup.utils.test_policy import load_policy, run_policy
-# import bluesky as bs
+import bluesky as bs
 # from bluesky import tools
 # from bluesky.network.client import Client
 
@@ -13,6 +13,7 @@ import gym
 # from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
 # from stable_baselines import PPO2
 # import stable_baselines
+from ray.rllib.env import MultiAgentEnv
 
 import numpy as np
 import ray.rllib.agents.ppo as ppo
@@ -26,13 +27,32 @@ from ray import tune
 # from ray.rllib.env.env_context import EnvContext
 
 from bluesky_env_ray import BlueSkyEnv
+# from EnvironmentExample import EnvironmentExample
 
+class MultiEnv(MultiAgentEnv):
+    def __init__(self, env_config):
+        # pick actual env based on worker and env indexes
+        self.env = BlueSkyEnv(env_config)
+        self.action_space = self.env.action_space
+        self.observation_space = self.env.observation_space
+    def reset(self):
+        return self.env.reset()
+    def step(self, action):
+        return self.env.step(action)
 
 
 
 
 def main():
-
+    # bs.init()
+    # env_config = {}
+    # test = BlueSkyEnv(env_config)
+    # test.reset()
+    # # action = dict(SUP0=5)
+    # for i in range(500):
+    #     kaas = test.step(5)
+    #     print('iteration loop nr: ' + str(i))
+    #     print(kaas)
     # def make_env(i, n_cpu):
     #     def _init():
     #         env = gym.make('bluesky-v0', NodeID=i, n_cpu=n_cpu)
@@ -77,22 +97,26 @@ def main():
 
     # env_config = EnvConfig()
     # env_config = 'kaas'
-
+    #
+    #         'horizon':500,
+    #         'batch_mode':'complete_episodes',
     # test = BlueSkyEnv(env_config)
     ray.init()
-    # # env_creator = lambda config:make_env(config,0,0)
-    register_env("Bluesky", env_creator)
-    #
-    # # low_obs = np.array([-1,-1,-1,0,0,0])
-    # # high_obs = np.array([1,1,1,1,1,1])
+    # # # env_creator = lambda config:make_env(config,0,0)
+
+    register_env("Bluesky", lambda config: MultiEnv(config))
+    # #
+    print('hallo2')
+    # # # low_obs = np.array([-1,-1,-1,0,0,0])
+    # # # high_obs = np.array([1,1,1,1,1,1])
     trainer = ppo.PPOAgent(env="Bluesky", config={
-            "log_level":"INFO",
+            "log_level":"DEBUG",
             'num_workers':4,
             "vf_share_layers":True,
-            'num_cpus_per_worker':1,
-            'num_envs_per_worker':4,
+            #'num_cpus_per_worker':16,
+            'num_envs_per_worker':1,
             'env_config':{'nr_nodes':12},
-            'horizon':500,
+            'horizon':2000,
             'batch_mode':'complete_episodes',
             'model':{
                 'fcnet_hiddens':[256,256],
@@ -103,61 +127,65 @@ def main():
             'vf_clip_param':50
 
         })
-    trainer = ddpg.DDPGAgent(env="Bluesky", config={
-            "log_level":"INFO",
-            'num_workers':4,
-            # "vf_share_layers":True,
-            'num_cpus_per_worker':1,
-            'num_envs_per_worker':4,
-            'env_config':{'nr_nodes':12},
-            'horizon':500,
-            # 'batch_mode':'complete_episodes',
-            # 'model':{
-            #     'fcnet_hiddens':[256,256],
-            #     "use_lstm":False
-            # },
-            # 'sample_batch_size':200,
-            # 'train_batch_size':4000,
-            # 'vf_clip_param':50
-
-        })
-    #
-    #
-    #
-    # trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
-
     for i in range(151):
         trainer.train()
         if i % 10 == 0:
             checkpoint = trainer.save()
             print("checkpoint saved at", checkpoint, i)
-    # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-    # Action space is normalized heading, shape (1,)
-    # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
-
-
-
-    #
-    # tune.run(
-    #     "PPO",
-    #     name='Test3',
-    #     local_dir='~/ray_results/superduper2',
-    #     checkpoint_freq=5,
-    #     checkpoint_at_end=True,
-    #     verbose=2,
-    #     resume='prompt',
-    #     stop={"training_iteration": 10},
-    #     restore='/home/dennis/ray_results/superduper2/Test3/PPO_Bluesky_0_2019-04-11_19-40-37e5tat2oe',
-    #     config={
-    #         "env":"Bluesky",
-    #         "log_level":"DEBUG",
+    print('hallo3')
+    # trainer = ddpg.DDPGAgent(env="Bluesky", config={
+    #         "log_level":"INFO",
     #         'num_workers':4,
-    #         "vf_share_layers":True,
+    #         # "vf_share_layers":True,
     #         'num_cpus_per_worker':1,
     #         'num_envs_per_worker':4,
     #         'env_config':{'nr_nodes':12},
     #         'horizon':500,
-    #         'batch_mode':'complete_episodes',
+    #         # 'batch_mode':'complete_episodes',
+    #         # 'model':{
+    #         #     'fcnet_hiddens':[256,256],
+    #         #     "use_lstm":False
+    #         # },
+    #         # 'sample_batch_size':200,
+    #         # 'train_batch_size':4000,
+    #         # 'vf_clip_param':50
+    #
+    #     })
+    # #
+    # #
+    # #
+    # # trainer.restore('/home/dennis/ray_results/PPO_Bluesky_2019-04-11_22-31-19ug0rl6c9/checkpoint_243/checkpoint-243')
+    #
+    # for i in range(151):
+    #     trainer.train()
+    #     if i % 10 == 0:
+    #         checkpoint = trainer.save()
+    #         print("checkpoint saved at", checkpoint, i)
+    # # obs_space = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+    # # Action space is normalized heading, shape (1,)
+    # # act_space = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+    #
+    #
+    #
+    # #
+    # # tune.run(
+    # #     "PPO",
+    # #     name='Test3',
+    # #     local_dir='~/ray_results/superduper2',
+    # #     checkpoint_freq=5,
+    # #     checkpoint_at_end=True,
+    # #     verbose=2,
+    # #     resume='prompt',
+    # #     stop={"training_iteration": 10},
+    # #     restore='/home/dennis/ray_results/superduper2/Test3/PPO_Bluesky_0_2019-04-11_19-40-37e5tat2oe',
+    # #     config={
+    # #         "env":"Bluesky",
+    # #         "log_level":"DEBUG",
+    # #         'num_workers':4,
+    # #         "vf_share_layers":True,
+    # #         'num_cpus_per_worker':1,
+    # #         'num_envs_per_worker':4,
+    # #         'env_config':{'nr_nodes':12},
     #         'model':{
     #             'fcnet_hiddens':[256,256],
     #             "use_lstm":True

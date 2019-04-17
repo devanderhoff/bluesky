@@ -83,8 +83,16 @@ def findvar(varname):
         name, index = varset[-1]
         # is a parent object passed? (e.g., traf.lat instead of just lat)
         if len(varset) > 1:
+            obj = None
             # The first object should be in the varlist of Plot
-            obj = varlist.get(varset[0][0])[0]
+            # As either a top-level object:
+            if varset[0][0] in varlist:
+                obj = varlist.get(varset[0][0])[0]
+            else:
+                for objname, objset in varlist.items():
+                    if varset[0][0] in objset[1]:
+                        obj = getattr(objset[0], varset[0][0])
+
             # Iterate over objectname,index pairs in varset
             for pair in varset[1:-1]:
                 if obj is None:
@@ -120,7 +128,9 @@ class Variable:
         ''' py3 replacement of operator.isNumberType.'''
         v = getattr(self.parent, self.varname)
         return isinstance(v, Number) or \
-            (isinstance(v, np.ndarray) and v.dtype.kind not in 'OSUV')
+            (isinstance(v, np.ndarray) and v.dtype.kind not in 'OSUV') or \
+            (isinstance(v, Collection) and self.index and
+            all([isinstance(v[i], Number) for i in self.index]))
 
     def get_type(self):
         ''' Return the a string containing the type name of this variable. '''
@@ -129,5 +139,6 @@ class Variable:
     def get(self):
         ''' Get a reference to the actual variable. '''
         if self.index:
-            return getattr(self.parent, self.varname)[self.index]
+            v = getattr(self.parent, self.varname)
+            return [v[i] for i in self.index]
         return getattr(self.parent, self.varname)
