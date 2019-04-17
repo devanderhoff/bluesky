@@ -79,12 +79,6 @@ def reset():
     global myclientrte
     myclientrte = None
     sim.pause()
-    sim.fastforward
-
-        alt=traf.alt
-    )
-    sim.send_event(b'MLSTATEREPLY', data, myclientrte)
-    sim.pause()
 
 def preupdate():
     pass

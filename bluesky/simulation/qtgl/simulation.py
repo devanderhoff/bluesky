@@ -6,7 +6,6 @@ from bluesky import settings, stack
 from bluesky.tools import datalog, areafilter, plugin, plotter, simtime
 from bluesky.tools.misc import txt2tim, tim2txt
 
-
 # Minimum sleep interval
 MINSLEEP = 1e-3
 
@@ -64,12 +63,11 @@ def Simulation(detached):
             super().step()
             # When running at a fixed rate, or when in hold/init,
             # increment system time with sysdt and calculate remainder to sleep.
-
-            # if not self.ffmode or not self.state == bs.OP:
-            #     remainder = self.syst - time.time()
-            #     if remainder > MINSLEEP:
-            #         time.sleep(remainder)
-            time.sleep(MINSLEEP)
+            if not self.ffmode or not self.state == bs.OP:
+                remainder = self.syst - time.time()
+                if remainder > MINSLEEP:
+                    time.sleep(remainder)
+            # time.sleep(MINSLEEP)
             if self.ffstop is not None and self.simt >= self.ffstop:
                 if self.benchdt > 0.0:
                     bs.scr.echo('Benchmark complete: %d samples in %.3f seconds.' % \
@@ -102,7 +100,6 @@ def Simulation(detached):
 
             # Always update stack
             stack.process()
-
             if self.state == bs.OP:
 
                 bs.traf.update(self.simt, self.simdt)
@@ -122,7 +119,6 @@ def Simulation(detached):
 
             # Always update syst
             self.syst += self.sysdt
-
             # Inform main of our state change
             if not self.state == self.prevstate:
                 self.sendState()
