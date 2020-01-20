@@ -1,5 +1,5 @@
 """ Autopilot Implementation."""
-from math import sin, cos, radians
+from math import sin, cos, radians,sqrt
 import numpy as np
 try:
     from collections.abc import Collection
@@ -10,16 +10,16 @@ import bluesky as bs
 from bluesky.tools import geo
 from bluesky.tools.simtime import timed_function
 from bluesky.tools.position import txt2pos
-from bluesky.tools.aero import ft, nm, vtas2cas, cas2mach, \
-     mach2cas, vcasormach2tas, vcasormach
-from .route import Route
+from bluesky.tools.aero import ft, nm, vcasormach2tas, tas2cas
 from bluesky.tools.trafficarrays import TrafficArrays, RegisterElementParameters
+from bluesky.tools.replaceable import ReplaceableSingleton
+from .route import Route
 
 bs.settings.set_variable_defaults(fms_dt=1.0)
 
-class Autopilot(TrafficArrays):
+class Autopilot(ReplaceableSingleton, TrafficArrays):
     def __init__(self):
-        super(Autopilot, self).__init__()
+        TrafficArrays.__init__(self)
 
         # Standard self.steepness for descent
         self.steepness = 3000. * ft / (10. * nm)
@@ -61,7 +61,7 @@ class Autopilot(TrafficArrays):
         self.route[-n:] = [Route() for _ in range(n)]
 
     @timed_function('fms', dt=bs.settings.fms_dt)
-    def update_fms(self, qdr, dist, dt=bs.settings.fms_dt):
+    def update_fms(self, qdr, dist):
         # Shift waypoints for aircraft i where necessary
         for i in bs.traf.actwp.Reached(qdr, dist, bs.traf.actwp.flyby):
             # Save current wp speed for use on next leg when we pass this waypoint
@@ -69,12 +69,14 @@ class Autopilot(TrafficArrays):
             # where this speed is specified, so we need to save it for use now
             # before getting the new data for the next waypoint
 
-            # Save speed as specified for the waypoint we pass
-            oldspd = bs.traf.actwp.spd[i]
+            # Get speed for next leg from the waypoint we now
+            bs.traf.actwp.spd[i]    = bs.traf.actwp.nextspd[i]
+            bs.traf.actwp.spdcon[i] = bs.traf.actwp.nextspd[i]
 
             # Get next wp (lnavon = False if no more waypoints)
-            lat, lon, alt, spd, bs.traf.actwp.xtoalt[i], toalt, \
-                lnavon, flyby, bs.traf.actwp.next_qdr[i] =  \
+            lat, lon, alt, bs.traf.actwp.nextspd[i], bs.traf.actwp.xtoalt[i], toalt, \
+                bs.traf.actwp.xtorta[i], bs.traf.actwp.torta[i], \
+                lnavon, flyby, bs.traf.actwp.next_qdr[i] =      \
                 self.route[i].getnextwp()  # note: xtoalt,toalt in [m]
 
             # End of route/no more waypoints: switch off LNAV
@@ -92,45 +94,53 @@ class Autopilot(TrafficArrays):
             if alt >= -0.01:
                 bs.traf.actwp.nextaltco[i] = alt  # [m]
 
-            if spd > -990. and bs.traf.swlnav[i] and bs.traf.swvnav[i]:
-
-                # Valid speed and LNAV and VNAV ap modes are on
-                # Depending on crossover altitude we fix CAS or Mach
-                if bs.traf.abco[i] and spd > 1.0:
-                    bs.traf.actwp.spd[i] = cas2mach(spd, bs.traf.alt[i])
-
-                elif bs.traf.belco[i] and 0. < spd <= 1.0:
-                    bs.traf.actwp.spd[i] = mach2cas(spd, bs.traf.alt[i])
-
-                else:
-                    bs.traf.actwp.spd[i] = spd
-
-            else:
+            if not bs.traf.swlnav[i]:
                 bs.traf.actwp.spd[i] = -999.
 
             # VNAV spd mode: use speed of this waypoint as commanded speed
             # while passing waypoint and save next speed for passing next wp
             # Speed is now from speed! Next speed is ready in wpdata
-            if bs.traf.swvnav[i] and oldspd > 0.0:
-                    bs.traf.selspd[i] = oldspd
+            if bs.traf.swvnavspd[i] and bs.traf.actwp.spd[i]> 0.0:
+                    bs.traf.selspd[i] = bs.traf.actwp.spd[i]
 
             # Update qdr and turndist for this new waypoint for ComputeVNAV
             qdr[i], dummy = geo.qdrdist(bs.traf.lat[i], bs.traf.lon[i],
                                         bs.traf.actwp.lat[i], bs.traf.actwp.lon[i])
 
-            # Update turndist so ComputeVNAV wokrs, is there a next leg direction or not?
+            # Update turndist so ComputeVNAV works, is there a next leg direction or not?
             if bs.traf.actwp.next_qdr[i] < -900.:
                 local_next_qdr = qdr[i]
             else:
                 local_next_qdr = bs.traf.actwp.next_qdr[i]
 
-            # Calculate turn dist 9and radius which we do not use) now for scalar variable [i]
+            # Calculate turn dist (and radius which we do not use) now for scalar variable [i]
             bs.traf.actwp.turndist[i], dummy = \
                 bs.traf.actwp.calcturn(bs.traf.tas[i], bs.traf.bank[i],
                                         qdr[i], local_next_qdr)  # update turn distance for VNAV
 
-            # VNAV = FMS ALT/SPD mode
-            self.ComputeVNAV(i, toalt, bs.traf.actwp.xtoalt[i])
+
+            # VNAV = FMS ALT/SPD mode incl. RTA
+            self.ComputeVNAV(i, toalt, bs.traf.actwp.xtoalt[i], bs.traf.actwp.torta[i],
+                             bs.traf.actwp.xtorta[i])
+
+        # Continuous guidance when speed constraint on active leg
+
+        # If still an RTA in the route and currently no speed constraint
+        for iac in np.where((bs.traf.actwp.torta > -99.)*(bs.traf.actwp.spdcon<0.0))[0]:
+            iwp = bs.traf.ap.route[iac].iactwp
+            if bs.traf.ap.route[iac].wprta[iwp]>-99.:
+
+                 # For all a/c flying to an RTA waypoint, recalculate speed more often
+                dist2go4rta = geo.kwikdist(bs.traf.lat[iac],bs.traf.lon[iac], \
+                                           bs.traf.actwp.lat[iac],bs.traf.actwp.lon[iac])*nm \
+                               + bs.traf.ap.route[iac].wpxtorta[iwp] # last term zero for active wp rta
+
+                # Set bs.traf.actwp.spd to rta speed, if necessary
+                self.setspeedforRTA(iac,bs.traf.actwp.torta[iac],dist2go4rta)
+
+                # If VNAV speed is on (by default coupled to VNAV), use it for speed guidance
+                if bs.traf.swvnavspd[iac]:
+                     bs.traf.selspd[iac] = bs.traf.actwp.spd[iac]
 
     def update(self):
         # FMS LNAV mode:
@@ -153,6 +163,7 @@ class Autopilot(TrafficArrays):
         dist2wp   = 60. * nm * np.sqrt(dx * dx + dy * dy) # [m]
         #print("dist2wp =",dist2wp,"   self.dist2vs =",self.dist2vs)
 
+        #print("actpwp.nextaltco=",bs.traf.actwp.nextaltco)
 
         # VNAV logic: descend as late as possible, climb as soon as possible
         startdescent = (dist2wp < self.dist2vs) + (bs.traf.actwp.nextaltco > bs.traf.alt)
@@ -176,7 +187,6 @@ class Autopilot(TrafficArrays):
                                 np.abs((bs.traf.actwp.nextaltco-bs.traf.alt))  \
                                 /np.maximum(1.0,t2go2alt))
 
-
         self.vnavvs  = np.where(self.swvnavvs, bs.traf.actwp.vs, self.vnavvs)
         #was: self.vnavvs  = np.where(self.swvnavvs, self.steepness * bs.traf.gs, self.vnavvs)
 
@@ -199,8 +209,9 @@ class Autopilot(TrafficArrays):
         dtspdchg = np.abs(tasdiff)/np.maximum(0.01,np.abs(bs.traf.ax)) #[s]
         dxspdchg = 0.5*np.sign(tasdiff)*np.abs(bs.traf.ax)*dtspdchg*dtspdchg + bs.traf.tas*dtspdchg #[m]
 
-        # Chekc also whether VNAVSPD is on, if not, SPD SEL has override
-        usespdcon      = (dist2wp < dxspdchg)*(bs.traf.actwp.spd > -990.)*bs.traf.swvnavspd*bs.traf.swvnav
+        # Check also whether VNAVSPD is on, if not, SPD SEL has override
+        usespdcon      = (dist2wp < dxspdchg)*(bs.traf.actwp.spdcon > -990.) * \
+                            bs.traf.swvnavspd*bs.traf.swvnav
 
         bs.traf.selspd = np.where(usespdcon, bs.traf.actwp.spd, bs.traf.selspd)
 
@@ -208,20 +219,30 @@ class Autopilot(TrafficArrays):
         self.tas = vcasormach2tas(bs.traf.selspd, bs.traf.alt)
 
 
-
-    def ComputeVNAV(self, idx, toalt, xtoalt):
+    def ComputeVNAV(self, idx, toalt, xtoalt, torta, xtorta):
         # debug print ("ComputeVNAV for",bs.traf.id[idx],":",toalt/ft,"ft  ",xtoalt/nm,"nm")
+
         # Check if there is a target altitude and VNAV is on, else return doing nothing
         if toalt < 0 or not bs.traf.swvnav[idx]:
             self.dist2vs[idx] = -999. #dist to next wp will never be less than this, so VNAV will do nothing
             return
 
+        # Flat earth distance to next wp
+        dy = (bs.traf.actwp.lat[idx] - bs.traf.lat[idx])  # [deg lat = 60. nm]
+        dx = (bs.traf.actwp.lon[idx] - bs.traf.lon[idx]) * bs.traf.coslat[idx]  # [corrected deg lon = 60. nm]
+        legdist = 60. * nm * np.sqrt(dx * dx + dy * dy)  # [m]
+
+        # Check  whether active waypoint speed needs to be adjusted for RTA
+        # sets bs.traf.actwp.spd, if necessary
+        #debug print("xtorta+legdist =",(xtorta+legdist)/nm)
+        self.setspeedforRTA(idx, torta, xtorta+legdist) # all scalar
+
         # So: somewhere there is an altitude constraint ahead
         # Compute proper values for bs.traf.actwp.nextaltco, self.dist2vs, self.alt, bs.traf.actwp.vs
         # Descent VNAV mode (T/D logic)
         #
-        # xtoalt  =  distance to go to next altitude constraint at a waypoinit in the route
-        #           (could be beyond next waypoint)
+        # xtoalt  =  distance to go to next altitude constraint at a waypoint in the route
+        #           (could be beyond next waypoint) [m]
         #
         # toalt   = altitude at next waypoint with an altitude constraint
         #
@@ -283,6 +304,11 @@ class Autopilot(TrafficArrays):
             else:
                 # Calculate V/S using self.steepness,
                 # protect against zero/invalid ground speed value
+#                if bs.sim.simt>11.99:
+#                    print("bs.traf.tas.shape =",bs.traf.tas.shape)
+#                    print("bs.traf.gs.shape =", bs.traf.gs.shape)
+#                    print("bs.traf.actwp.vs.shape =", bs.traf.actwp.vs.shape)
+
                 bs.traf.actwp.vs[idx] = -self.steepness * (bs.traf.gs[idx] +
                       (bs.traf.gs[idx] < 0.2 * bs.traf.tas[idx]) * bs.traf.tas[idx])
 
@@ -306,7 +332,38 @@ class Autopilot(TrafficArrays):
         else:
             self.dist2vs[idx] = -999. # [m]
 
+
         return
+
+    def setspeedforRTA(self, idx, torta, xtorta):
+        #debug print("setspeedforRTA called, torta,xtorta =",torta,xtorta/nm)
+
+        # Calculate required CAS to meet RTA
+        # for aircraft nr. idx (scalar)
+        if torta < -90. : # -999 signals there is no RTA defined in remainder of route
+            return False
+
+        deltime = torta-bs.sim.simt # Remaining time to next RTA [s] in simtime
+        if deltime>0: # Still possible?
+            trafax = abs(bs.traf.perf.acceleration()[idx])
+            gsrta = calcvrta(bs.traf.gs[idx], xtorta, deltime, trafax)
+
+            # Subtract tail wind speed vector
+            tailwind = (bs.traf.windnorth[idx]*bs.traf.gsnorth[idx] + bs.traf.windeast[idx]*bs.traf.gseast[idx]) / \
+                         bs.traf.gs[idx]*bs.traf.gs[idx]
+
+            # Convert to CAS
+            rtacas = tas2cas(gsrta-tailwind,bs.traf.alt[idx])
+
+            # Performance limits on speed will be applied in traf.update
+            if bs.traf.actwp.spdcon[idx]<0. and bs.traf.swvnavspd[idx]:
+                bs.traf.actwp.spd[idx] = rtacas
+                #print("setspeedforRTA: xtorta =",xtorta)
+
+            return rtacas
+        else:
+            return False
+
 
     def selaltcmd(self, idx, alt, vspd=None):
         """ Select altitude command: ALT acid, alt, [vspd] """
@@ -334,22 +391,28 @@ class Autopilot(TrafficArrays):
 
     def selhdgcmd(self, idx, hdg):  # HDG command
         """ Select heading command: HDG acid, hdg """
-        # If there is wind, compute the corresponding track angle
         if not isinstance(idx, Collection):
-                idx = np.array([idx])
-        for i in idx:
-            if bs.traf.wind.winddim > 0 and bs.traf.alt[i]>50.*ft:
-                tasnorth = bs.traf.tas[i] * np.cos(np.radians(hdg))
-                taseast  = bs.traf.tas[i] * np.sin(np.radians(hdg))
-                vnwnd, vewnd = bs.traf.wind.getdata(bs.traf.lat[i], bs.traf.lon[i], bs.traf.alt[i])
-                gsnorth    = tasnorth + vnwnd
-                gseast     = taseast  + vewnd
-                trk        = np.degrees(np.arctan2(gseast, gsnorth))
-            else:
-                trk = hdg
+            idx = np.array([idx])
+        if not isinstance(hdg, Collection):
+            hdg = np.array([hdg])
+        # If there is wind, compute the corresponding track angle
+        if bs.traf.wind.winddim > 0:
+            ab50 = bs.traf.alt[idx] > 50.0 * ft
+            bel50 = np.logical_not(ab50)
+            iab = idx[ab50]
+            ibel = idx[bel50]
 
-            self.trk[i]  = trk
-            bs.traf.swlnav[i] = False
+            tasnorth = bs.traf.tas[iab] * np.cos(np.radians(hdg[ab50]))
+            taseast = bs.traf.tas[iab] * np.sin(np.radians(hdg[ab50]))
+            vnwnd, vewnd = bs.traf.wind.getdata(bs.traf.lat[iab], bs.traf.lon[iab], bs.traf.alt[iab])
+            gsnorth = tasnorth + vnwnd
+            gseast = taseast + vewnd
+            self.trk[iab] = np.degrees(np.arctan2(gseast, gsnorth))
+            self.trk[ibel] = hdg
+        else:
+            self.trk[idx] = hdg
+
+        bs.traf.swlnav[idx] = False
         # Everything went ok!
         return True
 
@@ -358,8 +421,7 @@ class Autopilot(TrafficArrays):
         # Depending on or position relative to crossover altitude,
         # we will maintain CAS or Mach when altitude changes
         # We will convert values when needed
-        _, cas, m = vcasormach(casmach, bs.traf.alt[idx])
-        bs.traf.selspd[idx] = np.where(bs.traf.abco[idx], m, cas) # [-,-,m/s]
+        bs.traf.selspd[idx] = casmach
 
         # Used to be: Switch off VNAV: SPD command overrides
         bs.traf.swvnavspd[idx]   = False
@@ -506,8 +568,10 @@ class Autopilot(TrafficArrays):
                     bs.traf.swvnav[i]    = True
                     bs.traf.swvnavspd[i] = True
                     self.route[i].calcfp()
-                    self.ComputeVNAV(i,self.route[i].wptoalt[self.route[i].iactwp],
-                                         self.route[i].wpxtoalt[self.route[i].iactwp])
+                    actwpidx = self.route[i].iactwp
+                    self.ComputeVNAV(i,self.route[i].wptoalt[actwpidx],self.route[i].wpxtoalt[actwpidx],\
+                                     self.route[i].wptorta[actwpidx],self.route[i].wpxtorta[actwpidx])
+                    bs.traf.actwp.nextaltco[i] = self.route[i].wptoalt[actwpidx]
 
                 else:
                     return False, ("VNAV " + bs.traf.id[i] + ": no waypoints or destination specified")
@@ -516,3 +580,66 @@ class Autopilot(TrafficArrays):
                 bs.traf.swvnavspd[i] = False
         if flag == None:
             return True, '\n'.join(output)
+
+def calcvrta(v0, dx, deltime, trafax):
+    # Calculate required target ground speed v1 [m/s]
+    # to meet an RTA at this leg
+    #
+    #   v0      = current ground speed [m/s]
+    #   dx      = leg distance [m]
+    #   deltime = time left till RTA[s]
+    #   trafax  = horizontal acceleration [m/s2]
+
+    # Set up variables
+    dt = deltime
+
+    # Do we need decelerate or accelerate
+    if v0 * dt < dx:
+        ax = abs(trafax)
+    else:
+        ax = -abs(trafax)
+
+    # Solve 2nd order equation for v1 which results from:
+    #
+    #   dx = 0.5*(v0+v1)*dtacc + v1 * dtconst
+    #   dt = trta - tnow = dtacc + dtconst
+    #   dtacc = (v1-v0)/ax
+    #
+    # with unknown dtconst, dtacc, v1
+    #
+    # -.5/ax * v1**2  +(v0/ax+dt)*v1 -0.5*v0**2 / ax - dx =0
+
+    a = -0.5 / ax
+    b = (v0 / ax + dt)
+    c = -0.5 * v0 * v0 / ax - dx
+
+    D = b * b - 4. * a * c
+
+    # Possibly two v1 solutions
+    vlst = []
+
+    if D >= 0.:
+        x1 = (-b - sqrt(D)) / (2. * a)
+        x2 = (-b + sqrt(D)) / (2. * a)
+
+        # Check solutions for v1
+        for v1 in (x1, x2):
+            dtacc = (v1 - v0) / ax
+            dtconst = dt - dtacc
+
+            # Physically possible: both dtacc and dtconst >0
+            if dtacc >= 0 and dtconst >= 0.:
+                vlst.append(v1)
+
+    if len(vlst) == 0:  # Not possible? Maybe borderline, so then simple calculation
+        vtarg = dx/dt
+
+    # Just in case both would be valid, take closest to v0
+    elif len(vlst) == 2:
+        vtarg = vlst[int(abs(vlst[1] - v0) < abs(vlst[0] - v0))]
+
+    # Normal case is one solution
+    else:
+        vtarg = vlst[0]
+    return vtarg
+

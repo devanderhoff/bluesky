@@ -3,29 +3,38 @@ import bluesky as bs
 from bluesky.tools.trafficarrays import TrafficArrays, RegisterElementParameters
 from bluesky.tools.aero import nm, g0
 from bluesky.tools.misc import degto180
+from bluesky.tools.replaceable import ReplaceableSingleton
 
-
-class ActiveWaypoint(TrafficArrays):
+class ActiveWaypoint(ReplaceableSingleton, TrafficArrays):
     def __init__(self):
-        super(ActiveWaypoint, self).__init__()
+        TrafficArrays.__init__(self)
         with RegisterElementParameters(self):
             self.lat       = np.array([])  # [deg] Active WP latitude
             self.lon       = np.array([])  # [deg] Active WP longitude
             self.nextaltco = np.array([])  # [m] Altitude to arrive at after distance xtoalt
             self.xtoalt    = np.array([])  # [m] Distance to next altitude constraint
-            self.spd       = np.array([])  # [CAS[m/s]/Mach]Active WP speed
+            self.nextspd   = np.array([])  # [CAS[m/s]/Mach] save speed from next wp for next leg
+            self.spd       = np.array([])  # [CAS[m/s]/Mach]Active WP speed (constraint or calculated)
+            self.spdcon    = np.array([])  # [CAS[m/s]/Mach]Active WP speed constraint
             self.vs        = np.array([])  # [m/s] Active vertical speed to use
             self.turndist  = np.array([])  # [m] Distance when to turn to next waypoint
             self.flyby     = np.array([])  # Flyby switch, when False, flyover (turndist=0.0)
+            self.torta      = np.array([])  # [s] NExt req Time of Arrival (RTA) (-999. = None)
+            self.xtorta    = np.array([])  # [m] distance ot next RTA
             self.next_qdr  = np.array([])  # [deg] track angle of next leg
+
 
     def create(self, n=1):
         super(ActiveWaypoint, self).create(n)
         # LNAV route navigation
         self.lat[-n:]       = 89.99    # [deg]Active WP latitude
+        self.nextspd[-n:]   = -999.    # [CAS[m/s]/Mach]Next leg speed from current WP
         self.spd[-n:]       = -999.    # [CAS[m/s]/Mach]Active WP speed
+        self.spdcon[-n:]    = -999.    # [CAS[m/s]/Mach]Active WP speed constraint
         self.turndist[-n:]  = 1.0      # [m] Distance to active waypoint where to turn
         self.flyby[-n:]     = 1.0      # Flyby/fly-over switch
+        self.xtorta[-n:]    = 0.0      # Distance to next RTA
+        self.torta[-n:]      = -999.0   # [s] Req Time of Arrival (RTA) for next wp (-999. = None)
         self.next_qdr[-n:]  = -999.0   # [deg] bearing next leg
 
     def Reached(self, qdr, dist, flyby):

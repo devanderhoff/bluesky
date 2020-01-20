@@ -102,6 +102,15 @@ if qt:
                 print('[FAIL]')
                 print('Could not determine GL version')
 
+            print("Checking for pyopengl-accelerate", end=' ')
+        try:
+            import OpenGL_accelerate
+        except ImportError:
+            print("[FAIL]")
+        else:
+            print('[OK]')
+
+
 print("Checking for pygame             ", end=' ')
 try:
     import pygame
@@ -124,7 +133,8 @@ if np and sp and mpl:
 
 print("Checking bluesky modules")
 try:
-    from bluesky import *
+    import bluesky
+    bluesky.init()
     from bluesky.ui import *
     from bluesky.stack import *
     from bluesky.simulation import *

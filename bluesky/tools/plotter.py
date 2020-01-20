@@ -9,15 +9,17 @@ from bluesky.tools import varexplorer as ve
 plots = list()
 
 
-def plot(varx='', vary='', dt=1.0, fig=None, **params):
+def plot(*args, **params):
     ''' Select a set of variables to plot.
         Arguments: varx, vary, dt, color, fig. '''
-    try:
-        newplot = Plot(varx, vary, dt, fig, **params)
-        plots.append(newplot)
-        return True
-    except IndexError as e:
-        return False, e.args[0]
+    if args:
+        try:
+            newplot = Plot(*args, **params)
+            plots.append(newplot)
+        except IndexError as e:
+            return False, e.args[0]
+    bs.net.send_stream(b'PLOT' + (bs.stack.sender() or b'*'), dict(show=True))
+    return True
 
 
 def legend(legend, fig=None):
@@ -33,13 +35,22 @@ def legend(legend, fig=None):
     except IndexError as e:
         return False, e.args[0]
 
-def update(simt):
+def reset():
+    ''' Remove plots when simulation is reset. '''
+    # Notify clients of removal of plots
+    notify_ids = {p.stream_id for p in plots}
+    for stream_id in notify_ids:
+        bs.net.send_stream(stream_id, dict(reset=True))
+    plots.clear()
+
+
+def update():
     ''' Periodic update function for the plotter. '''
     streamdata = defaultdict(dict)
-    for plot in plots:
-        if plot.tnext <= simt:
-            plot.tnext += plot.dt
-            streamdata[plot.stream_id][plot.fig] = dict(x=plot.x.get(), y=plot.y.get())
+    for p in plots:
+        if p.tnext <= bs.sim.simt:
+            p.tnext += p.dt
+            streamdata[p.stream_id][p.fig] = dict(x=p.x.get(), y=p.y.get())
 
     for streamname, data in streamdata.items():
         bs.net.send_stream(streamname, data)

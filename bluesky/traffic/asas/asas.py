@@ -117,6 +117,7 @@ class ASAS(TrafficArrays):
 
         # Sets of pairs: conflict pairs, LoS pairs
         self.confpairs = list()  # Conflict pairs detected in the current timestep (used for resolving)
+        self.confpairs_new = list()  # Conflict pairs detected in the current timestep that were not yet present in the previous timestep
         self.confpairs_unique = set()  # Unique conflict pairs (a, b) = (b, a) are merged
         self.resopairs = set()  # Resolved (when RESO is on) conflicts that are still before CPA
         self.lospairs = list()  # Current loss of separation pairs
@@ -124,13 +125,19 @@ class ASAS(TrafficArrays):
         self.confpairs_all = list()  # All conflicts since simt=0
         self.lospairs_all = list()  # All losses of separation since simt=0
 
-        self.dcpa = np.array([])  # CPA distance
-
         # Conflict time and geometry data per conflict pair
+        self.dcpa = np.array([])  # CPA distance
         self.tcpa = np.array([])  # Time to CPA
         self.tLOS = np.array([])  # Time to start LoS
         self.qdr = np.array([])  # Bearing from ownship to intruder
         self.dist = np.array([])  # Horizontal distance between ""
+
+        # Conflict time and geometry data per new conflict pair
+        self.dcpa_new = np.array([])  # CPA distance
+        self.tcpa_new = np.array([])  # Time to CPA
+        self.tLOS_new = np.array([])  # Time to start LoS
+        self.qdr_new = np.array([])  # Bearing from ownship to intruder
+        self.dist_new = np.array([])  # Horizontal distance between ""
 
     def toggle(self, flag=None):
         if flag is None:
@@ -149,6 +156,7 @@ class ASAS(TrafficArrays):
         Clear conflict database
         """
         self.confpairs = list()  # Conflict pairs detected in the current timestep (used for resolving)
+        self.confpairs_new = list()  # Conflict pairs detected in the current timestep that were not yet present in the previous timestep
         self.confpairs_unique = set()  # Unique conflict pairs (a, b) = (b, a) are merged
         self.resopairs = set()  # Resolved (when RESO is on) conflicts that are still before CPA
         self.lospairs = list()  # Current loss of separation pairs
@@ -415,6 +423,7 @@ class ASAS(TrafficArrays):
             their CPA. """
         # Conflict pairs to be deleted
         delpairs = set()
+        changeactive = dict()
 
         # Look at all conflicts, also the ones that are solved but CPA is yet to come
         for conflict in self.resopairs:
@@ -456,27 +465,37 @@ class ASAS(TrafficArrays):
             # and not in horizontal LOS or a bouncing conflict
             if idx2 >= 0 and (not past_cpa or hor_los or is_bouncing):
                 # Enable ASAS for this aircraft
-                self.active[idx1] = True
+                changeactive[idx1] = True
             else:
-                # Switch ASAS off for ownship
-                self.active[idx1] = False
-
-                # Waypoint recovery after conflict: Find the next active waypoint
-                # and send the aircraft to that waypoint.
-                iwpid = bs.traf.ap.route[idx1].findact(idx1)
-                if iwpid != -1:  # To avoid problems if there are no waypoints
-                    bs.traf.ap.route[idx1].direct(idx1, bs.traf.ap.route[idx1].wpname[iwpid])
-
+                # Switch ASAS off for ownship if there are no other conflicts
+                # that this aircraft is involved in.
+                changeactive[idx1] = changeactive.get(idx1, False)
                 # If conflict is solved, remove it from the resopairs list
                 delpairs.add(conflict)
+
+        for idx, active in changeactive.items():
+            # Loop a second time: this is to avoid that ASAS resolution is
+            # turned off for an aircraft that is involved simultaneously in
+            # multiple conflicts, where the first, but not all conflicts are
+            # resolved.
+            self.active[idx] = active
+            if not active:
+                # Waypoint recovery after conflict: Find the next active waypoint
+                # and send the aircraft to that waypoint.
+                iwpid = bs.traf.ap.route[idx].findact(idx)
+                if iwpid != -1:  # To avoid problems if there are no waypoints
+                    bs.traf.ap.route[idx].direct(idx, bs.traf.ap.route[idx].wpname[iwpid])
 
         # Remove pairs from the list that are past CPA or have deleted aircraft
         self.resopairs -= delpairs
 
     @timed_function('asas', dt=settings.asas_dt)
-    def update(self, dt):
+    def update(self):
         if not self.swasas or bs.traf.ntraf == 0:
             return
+
+        # Keep old confpairs to determine new confpairs
+        prevconfpairs = set(self.confpairs)
 
         # Conflict detection
         self.confpairs, self.lospairs, self.inconf, self.tcpamax, \
@@ -486,6 +505,17 @@ class ASAS(TrafficArrays):
         # Conflict resolution if there are conflicts
         if self.confpairs:
             self.cr.resolve(self, bs.traf)
+
+        # Store statistics for all new conflict pairs
+        self.confpairs_new = list(set(self.confpairs) - prevconfpairs)
+        #print(len(self.confpairs), len(self.confpairs_new))
+        idxdict = dict((v, i) for i, v in enumerate(self.confpairs))
+        idxnew = [idxdict.get(i) for i in self.confpairs_new]
+        self.dcpa_new = np.asarray(self.dcpa)[idxnew]
+        self.tcpa_new = np.asarray(self.tcpa)[idxnew]
+        self.tLOS_new = np.asarray(self.tLOS)[idxnew]
+        self.qdr_new = np.asarray(self.qdr)[idxnew]
+        self.dist_new = np.asarray(self.dist)[idxnew]
 
         # Add new conflicts to resopairs and confpairs_all and new losses to lospairs_all
         self.resopairs.update(self.confpairs)

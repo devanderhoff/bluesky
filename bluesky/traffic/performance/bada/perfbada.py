@@ -2,16 +2,16 @@
 import numpy as np
 import bluesky as bs
 from bluesky.tools.simtime import timed_function
-from bluesky.tools.aero import kts, ft, g0, a0, T0, gamma1, gamma2,  beta, R, vtas2cas
+from bluesky.tools.aero import kts, ft, g0, vtas2cas
 from bluesky.tools.trafficarrays import TrafficArrays, RegisterElementParameters
 from bluesky.traffic.performance.legacy.performance import esf, phases, calclimits, PHASE
 from bluesky import settings
+from . import coeff_bada
 
 # Register settings defaults
 settings.set_variable_defaults(perf_path_bada='data/performance/BADA', 
                                performance_dt=1.0, verbose=False)
 
-from . import coeff_bada
 if not coeff_bada.init(settings.perf_path_bada):
     raise ImportError('BADA performance model: Error loading BADA files from ' + settings.perf_path_bada + '!')
 else:
@@ -133,10 +133,6 @@ class PerfBADA(TrafficArrays):
             self.vdes        = np.array([])   # [m/s]
             self.mdes        = np.array([])   # [-]
 
-            #  Crossover altitude
-            self.atranscl    = np.array([])
-            self.atransdes   = np.array([])
-
             # flight phase
             self.phase       = np.array([])
             self.post_flight = np.array([])   # taxi prior of post flight?
@@ -150,9 +146,9 @@ class PerfBADA(TrafficArrays):
             self.cf_cruise   = np.array([])   # [-]
 
             # performance
-            self.Thr         = np.array([])   # thrust
+            self.thrust         = np.array([])   # thrust
             self.D           = np.array([])   # drag
-            self.ff          = np.array([])   # fuel flow
+            self.fuelflow    = np.array([])   # fuel flow
 
             # ground
             self.tol         = np.array([])   # take-off length[m]
@@ -244,17 +240,6 @@ class PerfBADA(TrafficArrays):
         self.vdes[-n:]      = coeff.Vdes_ref * kts
         self.mdes[-n:]      = coeff.Mdes_ref
 
-        # crossover altitude for climbing and descending aircraft (BADA User Manual 3.12, p. 12)
-        self.atranscl[-n:]  = (1e3 / 6.5) * (T0 * (1.0 - (((( 1.0 + gamma1 *
-            (self.cascl[-n:] / a0) * (self.cascl[-n:] / a0)) ** gamma2) - 1.0) /
-                (((1.0 + gamma1 * self.macl[-n:] * self.macl[-n:]) ** gamma2) - 1.0)) **
-                    (-beta * R / g0)))
-
-        self.atransdes[-n:] = (1e3 / 6.5) * (T0 * (1.0 - (((( 1.0 + gamma1 *
-            (self.casdes[-n:] / a0) * (self.casdes[-n:] / a0)) ** gamma2) - 1.0) /
-                (((1.0 + gamma1 * self.mades[-n:] * self.mades[-n:]) ** gamma2) - 1.0)) **
-                    (-beta * R / g0)))
-
         # aerodynamics
         # parasitic drag coefficients per phase
         self.cd0to[-n:]     = coeff.CD0_to
@@ -320,9 +305,9 @@ class PerfBADA(TrafficArrays):
         self.cf4[-n:]       = 1.0 if coeff.Cf4 < 1e-9 else coeff.Cf4
         self.cf_cruise[-n:] = coeff.Cf_cruise
 
-        self.Thr[-n:]       = 0.0
+        self.thrust[-n:] = 0.0
         self.D[-n:]         = 0.0
-        self.ff[-n:]        = 0.0
+        self.fuelflow[-n:]  = 0.0
 
         # ground
         self.tol[-n:]       = coeff.TOL
@@ -339,10 +324,9 @@ class PerfBADA(TrafficArrays):
         swbada = True
         delalt = bs.traf.selalt - bs.traf.alt
         # flight phase
-        self.phase, self.bank = \
-        phases(bs.traf.alt, bs.traf.gs, delalt, \
-        bs.traf.cas, self.vmto, self.vmic, self.vmap, self.vmcr, self.vmld, bs.traf.bank, bs.traf.bphase, \
-        bs.traf.swhdgsel, swbada)
+        self.phase, self.bank = phases(bs.traf.alt, bs.traf.gs, delalt, 
+            bs.traf.cas, self.vmto, self.vmic, self.vmap, self.vmcr, self.vmld,
+            bs.traf.bank, bs.traf.bphase, bs.traf.swhdgsel, swbada)
 
         # AERODYNAMICS
         # Lift
@@ -381,17 +365,10 @@ class PerfBADA(TrafficArrays):
         descent = np.array(delalt<-epsalt)
         lvl = np.array(np.abs(delalt)<0.0001)*1
 
-
-
-        # crossover altitiude
-        atrans = self.atranscl*climb + self.atransdes*(1-climb)
-        bs.traf.abco = np.array(bs.traf.alt>atrans)
-        bs.traf.belco = np.array(bs.traf.alt<atrans)
-
         # energy share factor
         delspd = bs.traf.pilot.tas - bs.traf.tas
-        self.ESF = esf(bs.traf.abco, bs.traf.belco, bs.traf.alt, bs.traf.M,\
-                  climb, descent, delspd)
+        selmach = bs.traf.selspd < 2.0
+        self.ESF = esf(bs.traf.alt, bs.traf.M, climb, descent, delspd, selmach)
 
         # THRUST
         # 1. climb: max.climb thrust in ISA conditions (p. 32, BADA User Manual 3.12)
@@ -472,7 +449,7 @@ class PerfBADA(TrafficArrays):
                       (self.ESF*np.maximum(bs.traf.eps,bs.traf.tas)*cpred)) \
                       + self.D)) + ((bs.traf.selvs==0)*T)
 
-        self.Thr = T
+        self.thrust = T
 
 
         # Fuel consumption
@@ -498,7 +475,7 @@ class PerfBADA(TrafficArrays):
         jt = np.maximum.reduce([self.jet, self.turbo])
         pdf = np.maximum.reduce ([self.piston])
 
-        fnomjt = eta*self.Thr*jt
+        fnomjt = eta*self.thrust*jt
         fnomp = self.cf1*pdf
         # merge
         fnom = fnomjt + fnomp
@@ -510,7 +487,7 @@ class PerfBADA(TrafficArrays):
         fmin = fminjt + fminp
 
         # cruise fuel flow jet, turbo and piston
-        fcrjt = eta*self.Thr*self.cf_cruise*jt
+        fcrjt = eta*self.thrust*self.cf_cruise*jt
         fcrp = self.cf1*self.cf_cruise*pdf
         #merge
         fcr = fcrjt + fcrp
@@ -546,10 +523,10 @@ class PerfBADA(TrafficArrays):
         ffgd = fmin*(self.phase==PHASE['GD'])
 
         # fuel flow for each condition
-        self.ff = np.maximum.reduce([ffto, ffic, ffcc, ffcrl, ffcd, ffap, ffld, ffgd])/60. # convert from kg/min to kg/sec
+        self.fuelflow = np.maximum.reduce([ffto, ffic, ffcc, ffcrl, ffcd, ffap, ffld, ffgd])/60. # convert from kg/min to kg/sec
 
         # update mass
-        self.mass = self.mass - self.ff * dt # Use fuelflow in kg/min
+        self.mass -= self.fuelflow * dt # Use fuelflow in kg/min
 
 
 
@@ -608,9 +585,9 @@ class PerfBADA(TrafficArrays):
                                         bs.traf.pilot.alt,     \
                                         bs.traf.pilot.vs,      \
                                         self.maxthr,           \
-                                        self.Thr,              \
+                                        self.thrust,              \
                                         self.D,                \
-                                        bs.traf.cas,           \
+                                        bs.traf.tas,           \
                                         self.mass,             \
                                         self.ESF,              \
                                         self.phase)
@@ -634,10 +611,10 @@ class PerfBADA(TrafficArrays):
         #DEBUGGING
 
         #record data
-        # self.log.write(self.dt, str(bs.traf.alt[0]), str(bs.traf.tas[0]), str(self.D[0]), str(self.T[0]), str(self.ff[0]),  str(bs.traf.vs[0]), str(cd[0]))
+        # self.log.write(self.dt, str(bs.traf.alt[0]), str(bs.traf.tas[0]), str(self.D[0]), str(self.T[0]), str(self.fuelflow[0]),  str(bs.traf.vs[0]), str(cd[0]))
         # self.log.save()
 
         # print self.id, self.phase, self.alt/ft, self.tas/kts, self.cas/kts, self.M,  \
-        # self.Thr, self.D, self.ff,  cl, cd, self.vs/fpm, self.ESF,self.atrans, maxthr, \
+        # self.thrust, self.D, self.fuelflow,  cl, cd, self.vs/fpm, self.ESF,self.atrans, maxthr, \
         # self.vmto/kts, self.vmic/kts ,self.vmcr/kts, self.vmap/kts, self.vmld/kts, \
         # CD0f, kf, self.hmaxact

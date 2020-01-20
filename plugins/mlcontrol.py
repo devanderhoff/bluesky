@@ -66,19 +66,8 @@ def update():
         id=traf.id,
     )
     sim.send_event(b'MLSTATEREPLY', data, myclientrte)
-    sim.pause()
-    sim.fastforward
+    sim.hold()
 
-def preupdate():
-    global myclientrte
-    if myclientrte is None:
-        sim.pause()
-        sim.fastforward
-
-def reset():
-    global myclientrte
-    myclientrte = None
-    sim.pause()
 
 def preupdate():
     pass

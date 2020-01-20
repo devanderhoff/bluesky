@@ -294,7 +294,7 @@ def kwikdist(lata, lona, latb, lonb):
         dist [nm]
     """
 
-    re      = 6371000.  # readius earth [m]
+    re      = 6371000.  # radius earth [m]
     dlat    = np.radians(latb - lata)
     dlon    = np.radians(lonb - lona)
     cavelat = np.cos(np.radians(lata + latb) * 0.5)
@@ -337,7 +337,7 @@ def kwikqdrdist(lata, lona, latb, lonb):
     cavelat = np.cos(np.radians(lata + latb) * 0.5)
 
     dangle  = np.sqrt(dlat * dlat + dlon * dlon * cavelat * cavelat)
-    dist    = re * dangle
+    dist    = re * dangle / nm
 
     qdr     = np.degrees(np.arctan2(dlon * cavelat, dlat)) % 360.
 
@@ -356,7 +356,7 @@ def kwikqdrdist_matrix(lata, lona, latb, lonb):
     dangle  = np.sqrt(np.multiply(dlat, dlat) +
                       np.multiply(np.multiply(dlon, dlon),
                                   np.multiply(cavelat, cavelat)))
-    dist    = re * dangle
+    dist    = re * dangle / nm
 
     qdr     = np.degrees(np.arctan2(np.multiply(dlon, cavelat), dlat)) % 360.
 

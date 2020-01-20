@@ -3,7 +3,7 @@ import platform
 import os
 
 from PyQt5.QtWidgets import QApplication as app
-from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QItemSelectionModel, QSize, QEvent
+from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QItemSelectionModel, QSize
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtWidgets import QMainWindow, QSplashScreen, QTreeWidgetItem, \
     QPushButton, QFileDialog, QDialog, QTreeWidget, QVBoxLayout, \
@@ -14,23 +14,26 @@ from PyQt5 import uic
 import bluesky as bs
 from bluesky.tools.misc import tim2txt
 from bluesky.network import get_ownip
+from bluesky.ui import palette
 
 # Child windows
 from bluesky.ui.qtgl.docwindow import DocWindow
 from bluesky.ui.qtgl.radarwidget import RadarWidget
 from bluesky.ui.qtgl.infowindow import InfoWindow
+from bluesky.ui.qtgl.settingswindow import SettingsWindow
 from bluesky.ui.qtgl.nd import ND
-from bluesky.ui.pygame.dialog import fileopen
 
-is_osx = platform.system() == 'Darwin'
+if platform.system().lower() == "windows":
+    from bluesky.ui.pygame.dialog import fileopen
 
 # Register settings defaults
-bs.settings.set_variable_defaults(gfx_path='data/graphics',
-                                  stack_text_color=(0, 255, 0),
-                                  stack_background_color=(102, 102, 102))
+bs.settings.set_variable_defaults(gfx_path='data/graphics')
 
-fg = bs.settings.stack_text_color
-bg = bs.settings.stack_background_color
+palette.set_default_colours(stack_text=(0, 255, 0),
+                            stack_background=(102, 102, 102))
+
+fg = palette.stack_text
+bg = palette.stack_background
 
 class Splash(QSplashScreen):
     """ Splash screen: BlueSky logo during start-up"""
@@ -99,6 +102,7 @@ class MainWindow(QMainWindow):
         self.radarwidget = RadarWidget()
         self.nd = ND(shareWidget=self.radarwidget)
         self.infowin = InfoWindow()
+        self.settingswin = SettingsWindow()
 
         try:
             self.docwin = DocWindow(self)
@@ -110,7 +114,7 @@ class MainWindow(QMainWindow):
         gltimer.timeout.connect(self.nd.updateGL)
         gltimer.start(50)
 
-        if is_osx:
+        if platform.system() == 'Darwin':
             app.instance().setWindowIcon(QIcon(os.path.join(bs.settings.gfx_path, 'bluesky.icns')))
         else:
             app.instance().setWindowIcon(QIcon(os.path.join(bs.settings.gfx_path, 'icon.gif')))
@@ -127,7 +131,7 @@ class MainWindow(QMainWindow):
                     self.pandown :    ['pandown.svg', 'Pan down', self.buttonClicked],
                     self.ic :         ['stop.svg', 'Initial condition', self.buttonClicked],
                     self.op :         ['play.svg', 'Operate', self.buttonClicked],
-                    self.hold :       ['pause.svg', 'Hold', self.buttonClicked],
+                    self.hold :       ['hold.svg', 'Hold', self.buttonClicked],
                     self.fast :       ['fwd.svg', 'Enable fast-time', self.buttonClicked],
                     self.fast10 :     ['ffwd.svg', 'Fast-forward 10 seconds', self.buttonClicked],
                     self.sameic :     ['frwd.svg', 'Restart same IC', self.buttonClicked],
@@ -154,6 +158,7 @@ class MainWindow(QMainWindow):
         self.action_Open.triggered.connect(self.show_file_dialog)
         self.action_Save.triggered.connect(self.buttonClicked)
         self.actionBlueSky_help.triggered.connect(self.show_doc_window)
+        self.actionSettings.triggered.connect(self.settingswin.show)
 
         self.radarwidget.setParent(self.centralwidget)
         self.verticalLayout.insertWidget(0, self.radarwidget, 1)
@@ -172,8 +177,8 @@ class MainWindow(QMainWindow):
         self.nodetree.header().resizeSection(0, 130)
         self.nodetree.itemClicked.connect(self.nodetreeClicked)
         self.maxhostnum = 0
-        self.hosts      = dict()
-        self.nodes      = dict()
+        self.hosts = dict()
+        self.nodes = dict()
 
         fgcolor = '#%02x%02x%02x' % fg
         bgcolor = '#%02x%02x%02x' % bg
@@ -183,12 +188,7 @@ class MainWindow(QMainWindow):
 
         self.nconf_cur = self.nconf_tot = self.nlos_cur = self.nlos_tot = 0
 
-        app.instance().installEventFilter(self)
-
-    def eventFilter(self, widget, event):
-        if event.type() != QEvent.KeyPress:
-            return False
-
+    def keyPressEvent(self, event):
         if event.modifiers() & Qt.ShiftModifier \
                 and event.key() in [Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right]:
             dlat = 1.0 / (self.radarwidget.zoom * self.radarwidget.ar)
@@ -214,9 +214,7 @@ class MainWindow(QMainWindow):
         else:
             # All other events go to the BlueSky console
             self.console.keyPressEvent(event)
-
         event.accept()
-        return True
 
     def closeEvent(self, event=None):
         # Send quit to server if we own the host
@@ -368,7 +366,6 @@ class MainWindow(QMainWindow):
         elif self.sender() == self.action_Save:
             bs.net.send_event(b'STACKCMD', 'SAVEIC')
         elif hasattr(self.sender(), 'host_id'):
-            print(self.sender())
             bs.net.send_event(b'ADDNODES', 1)
 
     def show_file_dialog(self):

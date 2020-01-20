@@ -62,42 +62,41 @@ class PerfBS(TrafficArrays):
             self.k            = np.array([]) # induced drag factor
             self.clmaxcr      = np.array([]) # max. cruise lift coefficient
             self.qS           = np.array([]) # Dynamic air pressure [Pa]
-            self.atrans       = np.array([]) # Transition altitude [m]
 
             # engines
             self.n_eng        = np.array([]) # Number of engines
             self.etype        = np.array([]) # jet /turboprop
 
             # jet engines:
-            self.rThr         = np.array([]) # rated thrust (all engines)
-            self.SFC          = np.array([]) # specific fuel consumption in cruise
-            self.ff           = np.array([]) # fuel flow
-            self.ffto         = np.array([]) # fuel flow takeoff
-            self.ffcl         = np.array([]) # fuel flow climb
-            self.ffcr         = np.array([]) # fuel flow cruise
-            self.ffid         = np.array([]) # fuel flow idle
-            self.ffap         = np.array([]) # fuel flow approach
+            self.rated_thrust = np.array([]) # rated thrust (all engines)
+            self.SFC = np.array([]) # specific fuel consumption in cruise
+            self.fuelflow = np.array([]) # fuel flow
+            self.ffto = np.array([]) # fuel flow takeoff
+            self.ffcl = np.array([]) # fuel flow climb
+            self.ffcr = np.array([]) # fuel flow cruise
+            self.ffid = np.array([]) # fuel flow idle
+            self.ffap = np.array([]) # fuel flow approach
 
             # turboprop engines
-            self.P            = np.array([]) # avaliable power at takeoff conditions
-            self.PSFC_TO      = np.array([]) # specific fuel consumption takeoff
-            self.PSFC_CR      = np.array([]) # specific fuel consumption cruise
+            self.P = np.array([]) # avaliable power at takeoff conditions
+            self.PSFC_TO = np.array([]) # specific fuel consumption takeoff
+            self.PSFC_CR = np.array([]) # specific fuel consumption cruise
 
-            self.Thr          = np.array([]) # Thrust
-            self.Thr_pilot	 = np.array([])   # thrust required for pilot settings
-            self.D            = np.array([]) # Drag
-            self.ESF          = np.array([]) # Energy share factor according to EUROCONTROL
+            self.thrust = np.array([]) # Thrust
+            self.thrust_pilot = np.array([])   # thrust required for pilot settings
+            self.D = np.array([]) # Drag
+            self.ESF = np.array([]) # Energy share factor according to EUROCONTROL
 
             # flight phase
-            self.phase        = np.array([]) # flight phase
-            self.bank         = np.array([]) # bank angle
-            self.post_flight  = np.array([]) # check for ground mode:
+            self.phase = np.array([]) # flight phase
+            self.bank = np.array([]) # bank angle
+            self.post_flight = np.array([]) # check for ground mode:
                                               #taxi prior of after flight
-            self.pf_flag      = np.array([])
+            self.pf_flag = np.array([])
 
-            self.engines      = []           # avaliable engine type per aircraft type
-        self.eta          = 0.8          # propeller efficiency according to Raymer
-        self.Thr_s        = np.array([1., 0.85, 0.07, 0.3 ]) # Thrust settings per flight phase according to ICAO
+            self.engines = []           # avaliable engine type per aircraft type
+        self.eta = 0.8          # propeller efficiency according to Raymer
+        self.thrust_settings = np.array([1., 0.85, 0.07, 0.3 ]) # Thrust settings per flight phase according to ICAO
 
         return
 
@@ -133,11 +132,6 @@ class PerfBS(TrafficArrays):
         self.refcas[-n:]            = vtas2cas(coeffBS.cr_spd[coeffidx], 35000*ft) # nominal cruise CAS
         self.gr_acc[-n:]            = coeffBS.gr_acc[coeffidx] # ground acceleration
         self.gr_dec[-n:]            = coeffBS.gr_dec[coeffidx] # ground acceleration
-
-        # calculate the crossover altitude according to the BADA 3.12 User Manual
-        self.atrans[-n:]            = ((1000/6.5)*(T0*(1-((((1+gamma1*(self.refcas[-n:]/a0)*(self.refcas[-n:]/a0))** \
-                                (gamma2))-1) / (((1+gamma1*self.refma[-n:]*self.refma[-n:])** \
-                                    (gamma2))-1))**((-(beta)*R)/g0))))
 
         # limits
         self.vm_to[-n:]             = coeffBS.vmto[coeffidx]
@@ -184,16 +178,16 @@ class PerfBS(TrafficArrays):
         self.PSFC_TO[-n:]   = np.where(turboprops, coeffBS.PSFC_TO[propidx]*self.n_eng[-n:], 1.)
         self.PSFC_CR[-n:]   = np.where(turboprops, coeffBS.PSFC_CR[propidx]*self.n_eng[-n:], 1.)
 
-        self.rThr[-n:]      = np.where(turboprops, 1. , coeffBS.rThr[jetidx]*coeffBS.n_eng[coeffidx])  # rated thrust (all engines)
-        self.Thr[-n:]       = np.where(turboprops, 1. , coeffBS.rThr[jetidx]*coeffBS.n_eng[coeffidx])  # initialize thrust with rated thrust
-        self.Thr_pilot[-n:] = np.where(turboprops, 1. , coeffBS.rThr[jetidx]*coeffBS.n_eng[coeffidx])  # initialize thrust with rated thrust
-        self.maxthr[-n:]    = np.where(turboprops, 1. , coeffBS.rThr[jetidx]*coeffBS.n_eng[coeffidx]*1.2)  # maximum thrust - initialize with 1.2*rThr
+        self.rated_thrust[-n:]      = np.where(turboprops, 1. , coeffBS.rated_thrust[jetidx]*coeffBS.n_eng[coeffidx])  # rated thrust (all engines)
+        self.thrust[-n:]       = np.where(turboprops, 1. , coeffBS.rated_thrust[jetidx]*coeffBS.n_eng[coeffidx])  # initialize thrust with rated thrust
+        self.thrust_pilot[-n:] = np.where(turboprops, 1. , coeffBS.rated_thrust[jetidx]*coeffBS.n_eng[coeffidx])  # initialize thrust with rated thrust
+        self.maxthr[-n:]    = np.where(turboprops, 1. , coeffBS.rated_thrust[jetidx]*coeffBS.n_eng[coeffidx]*1.2)  # maximum thrust - initialize with 1.2*rThr
         self.SFC[-n:]       = np.where(turboprops, 1. , coeffBS.SFC[jetidx] )
-        self.ffto[-n:]      = np.where(turboprops, 1. , coeffBS.ffto[jetidx]*coeffBS.n_eng[coeffidx])
-        self.ffcl[-n:]      = np.where(turboprops, 1. , coeffBS.ffcl[jetidx]*coeffBS.n_eng[coeffidx])
-        self.ffcr[-n:]      = np.where(turboprops, 1. , coeffBS.ffcr[jetidx]*coeffBS.n_eng[coeffidx])
-        self.ffid[-n:]      = np.where(turboprops, 1. , coeffBS.ffid[jetidx]*coeffBS.n_eng[coeffidx])
-        self.ffap[-n:]      = np.where(turboprops, 1. , coeffBS.ffap[jetidx]*coeffBS.n_eng[coeffidx])
+        self.ffto[-n:]      = np.where(turboprops, 1. , coeffBS.ffto[jetidx]*coeffBS.n_eng[coeffidx]) / 60.0
+        self.ffcl[-n:]      = np.where(turboprops, 1. , coeffBS.ffcl[jetidx]*coeffBS.n_eng[coeffidx]) / 60.0
+        self.ffcr[-n:]      = np.where(turboprops, 1. , coeffBS.ffcr[jetidx]*coeffBS.n_eng[coeffidx]) / 60.0
+        self.ffid[-n:]      = np.where(turboprops, 1. , coeffBS.ffid[jetidx]*coeffBS.n_eng[coeffidx]) / 60.0
+        self.ffap[-n:]      = np.where(turboprops, 1. , coeffBS.ffap[jetidx]*coeffBS.n_eng[coeffidx]) / 60.0
 
     @timed_function('performance', dt=settings.performance_dt)
     def update(self, dt=settings.performance_dt):
@@ -201,10 +195,9 @@ class PerfBS(TrafficArrays):
         swbada = False # no-bada version
         delalt = bs.traf.selalt - bs.traf.alt
         # allocate aircraft to their flight phase
-        self.phase, self.bank = \
-           phases(bs.traf.alt, bs.traf.gs, delalt, \
-           bs.traf.cas, self.vmto, self.vmic, self.vmap, self.vmcr, self.vmld, bs.traf.bank, bs.traf.bphase, \
-           bs.traf.swhdgsel,swbada)
+        self.phase, self.bank = phases(bs.traf.alt, bs.traf.gs, delalt, 
+            bs.traf.cas, self.vmto, self.vmic, self.vmap, self.vmcr, self.vmld, 
+            bs.traf.bank, bs.traf.bphase, bs.traf.swhdgsel,swbada)
 
         # AERODYNAMICS
         # compute CL: CL = 2*m*g/(VTAS^2*rho*S)
@@ -252,27 +245,22 @@ class PerfBS(TrafficArrays):
         self.D = cd*self.qS
         # energy share factor and crossover altitude
         epsalt = np.array([0.001]*bs.traf.ntraf)
-        self.climb = np.array(delalt > epsalt)
-        self.descent = np.array(delalt< -epsalt)
-
-
-        # crossover altitiude
-        bs.traf.abco = np.array(bs.traf.alt>self.atrans)
-        bs.traf.belco = np.array(bs.traf.alt<self.atrans)
+        climb = np.array(delalt > epsalt)
+        descent = np.array(delalt< -epsalt)
 
         # energy share factor
         delspd = bs.traf.pilot.tas - bs.traf.tas
-        self.ESF = esf(bs.traf.abco, bs.traf.belco, bs.traf.alt, bs.traf.M,\
-                  self.climb, self.descent, delspd)
+        selmach = bs.traf.selspd < 2.0
+        self.ESF = esf(bs.traf.alt, bs.traf.M, climb, descent, delspd, selmach)
 
         # determine thrust
-        self.Thr = (((bs.traf.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.tas))) + self.D)
+        self.thrust = (((bs.traf.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.tas))) + self.D)
         # determine thrust required to fulfill requests from pilot
-        # self.Thr_pilot = (((bs.traf.pilot.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.pilot.tas))) + self.D)
-        self.Thr_pilot = (((bs.traf.ap.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.pilot.tas))) + self.D)
+        # self.thrust_pilot = (((bs.traf.pilot.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.pilot.tas))) + self.D)
+        self.thrust_pilot = (((bs.traf.ap.vs*self.mass*g0)/(self.ESF*np.maximum(bs.traf.eps, bs.traf.pilot.tas))) + self.D)
 
         # maximum thrust jet (Bruenig et al., p. 66):
-        mt_jet = self.rThr*(bs.traf.rho/rho0)**0.75
+        mt_jet = self.rated_thrust*(bs.traf.rho/rho0)**0.75
 
         # maximum thrust prop (Raymer, p.36):
         mt_prop = self.P*self.eta/np.maximum(bs.traf.eps, bs.traf.tas)
@@ -284,7 +272,7 @@ class PerfBS(TrafficArrays):
 
         # jet aircraft
         # ratio current thrust/rated thrust
-        pThr = self.Thr/self.rThr
+        pThr = self.thrust/self.rated_thrust
         # fuel flow is assumed to be proportional to thrust(Torenbeek, p.62).
         #For ground operations, idle thrust is used
         # cruise thrust is approximately equal to approach thrust
@@ -303,24 +291,24 @@ class PerfBS(TrafficArrays):
         TSFC = PSFC*bs.traf.tas/(550.0*self.eta)
 
         # formula p.36 Raymer is missing here!
-        ff_prop = self.Thr*TSFC*(self.etype==2)
+        ff_prop = self.thrust*TSFC*(self.etype==2)
 
 
         # combine
-        self.ff = np.maximum(0.0,ff_jet + ff_prop)
+        self.fuelflow = np.maximum(0.0, ff_jet + ff_prop)
 
         # update mass
-        #self.mass = self.mass - self.ff*self.dt/60. # Use fuelflow in kg/min
+        self.mass -= self.fuelflow * dt
 
         # print bs.traf.id, self.phase, bs.traf.alt/ft, bs.traf.tas/kts, bs.traf.cas/kts, bs.traf.M,  \
-        # self.Thr, self.D, self.ff,  cl, cd, bs.traf.vs/fpm, self.ESF,self.atrans, self.maxthr, \
+        # self.thrust, self.D, self.ff,  cl, cd, bs.traf.vs/fpm, self.ESF,self.atrans, self.maxthr, \
         # self.vmto/kts, self.vmic/kts ,self.vmcr/kts, self.vmap/kts, self.vmld/kts, \
         # CD0f, kf, self.hmaxact
 
 
         # for aircraft on the runway and taxiways we need to know, whether they
         # are prior or after their flight
-        self.post_flight = np.where(self.descent, True, self.post_flight)
+        self.post_flight = np.where(descent, True, self.post_flight)
 
         # when landing, we would like to stop the aircraft.
         bs.traf.pilot.tas = np.where((bs.traf.alt <0.5)*(self.post_flight)*self.pf_flag, 0.0, bs.traf.pilot.tas)
@@ -366,9 +354,9 @@ class PerfBS(TrafficArrays):
                                         bs.traf.pilot.alt,   \
                                         bs.traf.pilot.vs,    \
                                         self.maxthr,         \
-                                        self.Thr_pilot,      \
+                                        self.thrust_pilot,      \
                                         self.D,              \
-                                        bs.traf.cas,         \
+                                        bs.traf.tas,         \
                                         self.mass,           \
                                         self.ESF,            \
                                         self.phase)
@@ -398,14 +386,14 @@ class PerfBS(TrafficArrays):
 
         # exchange engine parameters
 
-        self.rThr[idx]   = coeffBS.rThr[self.jetengidx]*coeffBS.n_eng[idx] # rated thrust (all engines)
-        self.Thr[idx]    = coeffBS.rThr[self.jetengidx]*coeffBS.n_eng[idx] # initialize thrust with rated thrust
-        self.maxthr[idx] = coeffBS.rThr[self.jetengidx]*coeffBS.n_eng[idx] # maximum thrust - initialize with 1.2*rThr
+        self.rated_thrust[idx]   = coeffBS.rated_thrust[self.jetengidx]*coeffBS.n_eng[idx] # rated thrust (all engines)
+        self.thrust[idx]    = coeffBS.rated_thrust[self.jetengidx]*coeffBS.n_eng[idx] # initialize thrust with rated thrust
+        self.maxthr[idx] = coeffBS.rated_thrust[self.jetengidx]*coeffBS.n_eng[idx] # maximum thrust - initialize with 1.2*rThr
         self.SFC[idx]    = coeffBS.SFC[self.jetengidx]
-        self.ff[idx]     = 0. # neutral initialisation
-        self.ffto[idx]   = coeffBS.ffto[self.jetengidx]*coeffBS.n_eng[idx]
-        self.ffcl[idx]   = coeffBS.ffcl[self.jetengidx]*coeffBS.n_eng[idx]
-        self.ffcr[idx]   = coeffBS.ffcr[self.jetengidx]*coeffBS.n_eng[idx]
-        self.ffid[idx]   = coeffBS.ffid[self.jetengidx]*coeffBS.n_eng[idx]
-        self.ffap[idx]   = coeffBS.ffap[self.jetengidx]*coeffBS.n_eng[idx]
+        self.fuelflow[idx] = 0. # neutral initialisation
+        self.ffto[idx]   = coeffBS.ffto[self.jetengidx]*coeffBS.n_eng[idx] / 60.0
+        self.ffcl[idx]   = coeffBS.ffcl[self.jetengidx]*coeffBS.n_eng[idx] / 60.0
+        self.ffcr[idx]   = coeffBS.ffcr[self.jetengidx]*coeffBS.n_eng[idx] / 60.0
+        self.ffid[idx]   = coeffBS.ffid[self.jetengidx]*coeffBS.n_eng[idx] / 60.0
+        self.ffap[idx]   = coeffBS.ffap[self.jetengidx]*coeffBS.n_eng[idx] / 60.0
         return

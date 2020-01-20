@@ -20,7 +20,7 @@ logprecision = '%.8f'
 periodicloggers = dict()
 
 # Dict to contain all loggers (also the periodic loggers)
-allloggers      = dict()
+allloggers = dict()
 
 
 def crelog(name, dt=None, header=''):
@@ -31,11 +31,8 @@ def crelog(name, dt=None, header=''):
 
     return allloggers[name]
 
-def preupdate(simt):
-    pass
 
-
-def postupdate():
+def update():
     """ This function writes to files of all periodic logs by calling the appropriate
     functions for each type of periodic log, at the approriate update time. """
     for log in periodicloggers.values():
@@ -55,62 +52,68 @@ def reset():
 
 def makeLogfileName(logname):
     timestamp = datetime.now().strftime('%Y%m%d_%H-%M-%S')
-    fname     = "%s_%s_%s.log" % (logname, stack.get_scenname(), timestamp)
+    fname = "%s_%s_%s.log" % (logname, stack.get_scenname(), timestamp)
     return settings.log_path + '/' + fname
 
 
 def col2txt(col, nrows):
     if isinstance(col, (list, np.ndarray)):
         if isinstance(col[0], numbers.Integral):
-            return np.char.mod('%d', col)
+            ret = np.char.mod('%d', col)
         elif isinstance(col[0], numbers.Number):
-            return np.char.mod(logprecision, col)
+            ret = np.char.mod(logprecision, col)
         else:
-            return col
-    else:
-        if isinstance(col, numbers.Integral):
-            return nrows * ['%d' % col]
-        if isinstance(col, numbers.Number):
-            return nrows * [logprecision % col]
+            ret = np.char.mod('%s', col)
+        if len(ret.shape) > 1:
+            for el in ret.T:
+                yield el
+        else:
+            yield ret
+    elif isinstance(col, numbers.Integral):
+        yield nrows * ['%d' % col]
+    elif isinstance(col, numbers.Number):
+        yield nrows * [logprecision % col]
     # The input is not a number
-    return nrows * [col]
+    else:
+        yield nrows * [col]
 
 
 class CSVLogger:
     def __init__(self, name, dt, header):
-        self.name        = name
-        self.file        = None
+        self.name = name
+        self.file = None
         self.dataparents = []
-        self.header      = header.split('\n')
-        self.tlog        = 0.0
-        self.selvars     = []
+        self.header = header.split('\n')
+        self.tlog = 0.0
+        self.selvars = []
 
         # In case this is a periodic logger: log timestep
-        self.dt          = dt
-        self.default_dt  = dt
+        self.dt = dt
+        self.default_dt = dt
 
         # Register a command for this logger in the stack
-        stackcmd = {name : [
+        stackcmd = {name: [
             name + ' ON/OFF,[dt] or ADD [FROM parent] var1,...,varn',
-            '[txt,float/txt,...]', self.stackio, name+" data logging on"]
+            '[txt,float/word,...]', self.stackio, name+" data logging on"]
         }
         stack.append_commands(stackcmd)
 
     def setheader(self, header):
-        self.header     = header.split('\n')
+        self.header = header.split('\n')
 
     def setdt(self, dt):
-        self.dt         = dt
+        self.dt = dt
         self.default_dt = dt
 
     def addvars(self, selection):
         selvars = []
         while selection:
             parent = ''
-            if selection[0] == 'FROM':
+            if selection[0].upper() == 'FROM':
                 parent = selection[1]
                 del selection[0:2]
-            vars = list(itertools.takewhile(lambda i: i != 'FROM', selection))
+            vars = list(itertools.takewhile(
+                lambda i: i.upper() != 'FROM', selection))
             selection = selection[len(vars):]
             for v in vars:
                 varobj = ve.findvar(parent + '.' + v)
@@ -125,7 +128,7 @@ class CSVLogger:
     def open(self, fname):
         if self.file:
             self.file.close()
-        self.file       = open(fname, 'wb')
+        self.file = open(fname, 'wb')
         # Write the header
         for line in self.header:
             self.file.write(bytearray('# ' + line + '\n', 'ascii'))
@@ -133,7 +136,8 @@ class CSVLogger:
         columns = ['simt']
         for v in self.selvars:
             columns.append(v.varname)
-        self.file.write(bytearray('# ' + str.join(', ', columns) + '\n', 'ascii'))
+        self.file.write(
+            bytearray('# ' + str.join(', ', columns) + '\n', 'ascii'))
 
     def isopen(self):
         return self.file is not None
@@ -144,12 +148,12 @@ class CSVLogger:
             self.tlog += self.dt
 
             # Make the variable reference list
-            varlist  = [bs.sim.simt]
+            varlist = [bs.sim.simt]
             varlist += [v.get() for v in self.selvars]
             varlist += additional_vars
 
             # Get the number of rows from the first array/list
-            nrows = 0
+            nrows = 1
             for v in varlist:
                 if isinstance(v, (list, np.ndarray)):
                     nrows = len(v)
@@ -157,10 +161,12 @@ class CSVLogger:
             if nrows == 0:
                 return
             # Convert (numeric) arrays to text, leave text arrays untouched
-            txtdata = [col2txt(col, nrows) for col in varlist]
+            txtdata = [
+                txtcol for col in varlist for txtcol in col2txt(col, nrows)]
 
             # log the data to file
-            np.savetxt(self.file, np.vstack(txtdata).T, delimiter=',', newline='\n', fmt='%s')
+            np.savetxt(self.file, np.vstack(txtdata).T,
+                       delimiter=',', newline='\n', fmt='%s')
 
     def start(self):
         ''' Start this logger. '''
@@ -168,11 +174,11 @@ class CSVLogger:
         self.open(makeLogfileName(self.name))
 
     def reset(self):
-        self.dt         = self.default_dt
-        self.tlog       = 0.0
+        self.dt = self.default_dt
+        self.tlog = 0.0
         if self.file:
             self.file.close()
-            self.file   = None
+            self.file = None
 
     def listallvarnames(self):
         return str.join(', ', (v.varname for v in self.selvars))
@@ -187,12 +193,13 @@ class CSVLogger:
 
             text += 'with variables: ' + self.listallvarnames() + '\n'
             text += self.name + ' is ' + ('ON' if self.isopen() else 'OFF') + \
-                '\nUsage: ' + self.name + ' ON/OFF,[dt] or ADD [FROM parent] var1,...,varn'
+                '\nUsage: ' + self.name + \
+                ' ON/OFF,[dt] or ADD [FROM parent] var1,...,varn'
             return True, text
             # TODO: add list of logging vars
         elif args[0] == 'ON':
             if len(args) > 1:
-                if type(args[1]) is float:
+                if isinstance(args[1], float):
                     self.dt = args[1]
                 else:
                     return False, 'Turn ' + self.name + ' on with optional dt'
