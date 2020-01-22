@@ -47,7 +47,7 @@ class Node:
         # Start communication, and receive this node's ID
         self.send_event(b'REGISTER')
         self.host_id = self.event_io.recv_multipart()[0]
-        # print('Node connected, id={}'.format(self.node_id))
+        print('Node connected, id={}'.format(self.node_id))
 
     def quit(self):
         ''' Quit the simulation process. '''

@@ -1,13 +1,8 @@
 import numpy as np
-import gym
 from gym import spaces
-# import bluesky as bs
 from bluesky import tools
-from bluesky.network.client import Client
-import time
 from ray.rllib.env import MultiAgentEnv
 import bluesky as bs
-# from bluesky.simulation.qtgl import Simulation
 
 class BlueSkyEnv(MultiAgentEnv):
 
@@ -28,8 +23,6 @@ class BlueSkyEnv(MultiAgentEnv):
             -Use bs.settings for ports and plugin check.
             -Starting of server integration (Now the server has to separately be started by using bluesky.py --headless
         """
-        self.los_count = 0
-        self.wpt_count = 0
         self.work_id = env_config.worker_index
         self.env_id = env_config.vector_index
         # self.env_per_worker = 2  #set by env_config at some point
@@ -62,7 +55,7 @@ class BlueSkyEnv(MultiAgentEnv):
 
         # Define observation bounds and normalize so that all values range between -1 and 1 or 0 and 1,
         # normalization improves neural networks ability to converge
-        self.low_obs = np.array([self.min_lat, self.min_lon,self.min_hdg, self.min_dist_waypoint, self.min_dist_plane,
+        self.low_obs = np.array([self.min_lat, self.min_lon, self.min_hdg, self.min_dist_waypoint, self.min_dist_plane,
                                  self.min_dist_plane])
 
         self.high_obs = np.array([self.max_lat, self.max_lon, self.max_hdg, self.max_dist_waypoint, self.max_dist_plane,
@@ -97,19 +90,16 @@ class BlueSkyEnv(MultiAgentEnv):
         Reset the environment to initial state
         recdata is a dict that contains requested simulation data from Bluesky. Can be changed in plugin MLCONTROL.
         """
-        print('Los count: ', self.los_count)
-        print('Wpt found: ', self.wpt_count)
-        self.los_count = 0
-        self.wpt_count = 0
         if not self.connected:
             bs.init()
-            bs.sim.connect()
+            bs.net.connect()
             self.connected = True
         str_to_send = 'IC ' + self.scenfile
         bs.stack.stack(str_to_send)
-        bs.sim.step()
-        bs.sim.step()
 
+        simstep()
+        simstep()
+        bs.sim.fastforward()
         recdata = dict(
             lat=bs.traf.lat,
             lon=bs.traf.lon,
@@ -142,13 +132,13 @@ class BlueSkyEnv(MultiAgentEnv):
         self.ep = self.ep + 1
 
         # Loop over every agent
-        bs.sim.fastforward()
-
+        # bs.sim.fastforward()
+        # bs.stack.stack('HDG ' + 'SUP0' + ' ' + str(action))
         for id, value in action.items():
             action_tot = normalizer(value[0], 'NormToHDG', self.min_hdg, self.max_hdg)
             bs.stack.stack('HDG ' + id + ' ' + np.array2string(action_tot))
-
-        bs.sim.step()
+        # print(bs.stack.stack)
+        simstep()
 
         recdata = dict(
             lat=bs.traf.lat,
@@ -283,11 +273,9 @@ class BlueSkyEnv(MultiAgentEnv):
                 if self.state[id][i] <= self.los:
                     reward[id] = reward[id] - 100
                     done["__all__"] = True
-                    self.los_count += 1
                     failure = True
 
             if self.state[id][3] <= self.wpt_reached:
-                self.wpt_count += 1
                 reward[id] = reward[id] + 100
                 self.init_agent[id] = True
                 done[id] = True
@@ -297,6 +285,10 @@ class BlueSkyEnv(MultiAgentEnv):
         if not failure:
             done["__all__"] = all(value for value in self.init_agent.values()) #need fixing
         return reward, done
+
+def simstep():
+    bs.net.step()
+    bs.sim.step()
 
 def normalizer(value, type, min, max):
     """

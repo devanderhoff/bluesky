@@ -111,12 +111,12 @@ def main():
     # # # high_obs = np.array([1,1,1,1,1,1])
     trainer = ppo.PPOAgent(env="Bluesky", config={
             "log_level":"DEBUG",
-            'num_workers':4,
+            'num_workers':2,
             "vf_share_layers":True,
             #'num_cpus_per_worker':16,
             'num_envs_per_worker':1,
             'env_config':{'nr_nodes':12},
-            'horizon':2000,
+            'horizon':500,
             'batch_mode':'complete_episodes',
             'model':{
                 'fcnet_hiddens':[256,256],
