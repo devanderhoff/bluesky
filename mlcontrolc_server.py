@@ -19,7 +19,7 @@ observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 action_space = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
 
 class BlueSkyServer(ExternalEnv):
-    def __init__(self, observation_space, action_space):
+    def __init__(self, action_space, observation_space):
         ExternalEnv.__init__(
             self, observation_space,
             action_space)

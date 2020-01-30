@@ -9,15 +9,9 @@ from ray.rllib.utils.policy_client import PolicyClient
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
 def init_plugin():
-
+    
     # Addtional initilisation code
-    global client_mc
-    global iter
-    global connected
-    connected = False
-    client_mc = PolicyClient("https://localhost:27802")
-    print(client_mc)
-    print('penis')
+
     # Configuration parameters
     config = {
         # The name of your plugin
@@ -67,18 +61,23 @@ def init_plugin():
 def update():
     global connected
     global client_mc
-
+    global reward
+    global iter
+    global eid
 
     if connected == False:
         eid = client_mc.start_episode(training_enabled=True)
         connected = True
-    obs = [traf.lat, traf.lon, traf.hdg]
+    obs = [traf.lat[0], traf.lon[0], traf.hdg[0]]
     action = client_mc.get_action(eid, obs)
-    traf.selhdgcmd(traf.id, action)
+    str_to_send = 'HDG ' + traf.id[0] + ' ' + np.array2string(action[0])
+    stack.stack(str_to_send)
+    # Autopilot.selhdgcmd(traf.id, action)
     reward += 1
     iter += 1
     client_mc.log_returns(eid, reward, info=[])
-    if iter ==500:
+    print(iter)
+    if iter == 500:
         print('total reward', reward)
         client_mc.end_episode(eid, obs)
         connected = False
@@ -98,5 +97,15 @@ def reset():
 
 
 def mlstep():
+    global client_mc
+    global iter
+    global connected
+    global reward 
+    reward = 0
+    iter = 0
+    connected = False
+    client_mc = PolicyClient("http://localhost:27802")
+    print(client_mc)
+    print('penis')
     pass
 
