@@ -10,11 +10,11 @@ env_config = EnvConfigBuild(1, 1)
 
 
 env = BlueSkyEnv(env_config)
-env2 = BlueSkyEnv(env_config)
+
 
 env.reset()
-env2.reset()
+
 for i in range(100):
     env.step(60)
-    env2.step(270)
+
 

@@ -5,6 +5,7 @@ data/cache
 data/grib
 data/performance/BADA/*
 !/data/performance/BADA/README.md
+tutorial
 
 # Sphinx documentation
 docs/_build/
@@ -92,3 +93,4 @@ ssd.obj
 *-checkpoint.py
 *-checkpoint.ipynb
 .ropeproject/config.py
+/tutorial/

@@ -31,34 +31,36 @@ class BlueSkyEnv(MultiAgentEnv):
         self.scenfile = None
         self.connected = False
         if self.scenfile is None:
-            self.scenfile = './synthetics/super/super3.scn'
+            self.scenfile = './synthetics/init_scen_ray.scn'
 
         # Set constants for environment
         self.nm = 1852  # Nautical miles [nm] in meter [m]
         self.ep = 0
-        self.los = 5 * 1.05  # [nm] Horizontal separation minimum for resolution
+        self.los = 1.05  # [nm] Horizontal separation minimum for resolution
         self.wpt_reached = 5  # [nm]
-        self.min_hdg = 0    # [deg]
+        self.min_hdg = 1    # [deg]
         self.max_hdg = 360  # [deg]
-        self.min_lat = -1  # [lat/lon]
-        self.max_lat = 1  # [lat/lon]
-        self.min_lon = -1  # [lat/lon]
-        self.max_lon = 1  # [lat/lon]
+
+        self.min_lat = 51  # [lat/lon]
+        self.max_lat = 54  # [lat/lon]
+        self.min_lon = 2  # [lat/lon]
+        self.max_lon = 8  # [lat/lon]
 
         self.min_dist_plane = self.los * 0.95
-        self.max_dist_plane = 125
+        self.max_dist_plane = 80000
         self.min_dist_waypoint = self.wpt_reached * 0.95
-        self.max_dist_waypoint = 125
+        self.max_dist_waypoint = 80000
 
+        self.n_ac = 3
         # TODO:State definitions and other state information still has to be formalized.
         self.state = None
 
         # Define observation bounds and normalize so that all values range between -1 and 1 or 0 and 1,
         # normalization improves neural networks ability to converge
-        self.low_obs = np.array([self.min_lat, self.min_lon, self.min_hdg, self.min_dist_waypoint, self.min_dist_plane,
+        self.low_obs = np.array([self.min_lat-10, self.min_lon-10, self.min_hdg, self.min_dist_waypoint, self.min_dist_plane,
                                  self.min_dist_plane])
 
-        self.high_obs = np.array([self.max_lat, self.max_lon, self.max_hdg, self.max_dist_waypoint, self.max_dist_plane,
+        self.high_obs = np.array([self.max_lat+10, self.max_lon+10, self.max_hdg, self.max_dist_waypoint, self.max_dist_plane,
                                   self.max_dist_plane])
 
         # self.low_obs = np.array([self.min_lat, self.min_lon,
@@ -90,16 +92,31 @@ class BlueSkyEnv(MultiAgentEnv):
         Reset the environment to initial state
         recdata is a dict that contains requested simulation data from Bluesky. Can be changed in plugin MLCONTROL.
         """
+        # Connect to the BlueSky server and pan to area.
         if not self.connected:
-            bs.init()
-            bs.net.connect()
-            self.connected = True
-        str_to_send = 'IC ' + self.scenfile
-        bs.stack.stack(str_to_send)
+            #if self.env_id == 1:
+            bs.init(mode="sim-detached")
+            #else:
+                #bs.init()
+                #bs.net.connect()
 
-        simstep()
-        simstep()
-        bs.sim.fastforward()
+            self.connected = True
+            str_to_send = 'IC ' + self.scenfile
+            bs.stack.stack(str_to_send)
+            simstep()
+            simstep()
+
+        bs.sim.reset()
+        # bs.sim.fastforward()
+
+        ## Create aircraft
+        # Randomize location withing netherlands
+        aclat = np.random.randn(self.n_ac) * (self.max_lat - self.min_lat) + self.min_lat
+        aclon = np.random.randn(self.n_ac) * (self.max_lon - self.min_lon) + self.min_lon
+        achdg = np.random.randint(1, 360, self.n_ac)
+        acspd = np.ones(self.n_ac) * 250
+        bs.traf.create(n=self.n_ac, aclat=aclat, aclon=aclon, achdg=achdg, acspd=acspd)
+
         recdata = dict(
             lat=bs.traf.lat,
             lon=bs.traf.lon,
@@ -108,6 +125,8 @@ class BlueSkyEnv(MultiAgentEnv):
             actwplon=bs.traf.actwp.lon,
             id=bs.traf.id
         )
+
+        simstep()
         # set properties based on loaded scenfile
         self.nr_agents = len(recdata['id'])
         self.id_agents = recdata['id']
@@ -148,6 +167,8 @@ class BlueSkyEnv(MultiAgentEnv):
             actwplon=bs.traf.actwp.lon,
             id=bs.traf.id
         )
+        print(bs.traf.id)
+        print(bs.traf.hdg)
 
         # Forward action and let bluesky run a simulation step.
         # Normalize action to be between 0 and 1
