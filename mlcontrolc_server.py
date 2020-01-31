@@ -39,27 +39,47 @@ if __name__ == "__main__":
 
     # We use DQN since it supports off-policy actions, but you can choose and
     # configure any agent.
-    dqn = PPOAgent(
+    # dqn = PPOAgent(
+    #     env="srv",
+    #     config={
+    #         # Use a single process to avoid needing to set up a load balancer
+    #         "num_workers": 0,
+    #         # Configure the agent to run short iterations for debugging
+    #         # "exploration_fraction": 0.01,
+    #         # "learning_starts": 100,
+    #         "timesteps_per_iteration": 500,
+    #     })
+    trainer = PPOAgent(
         env="srv",
         config={
-            # Use a single process to avoid needing to set up a load balancer
-            "num_workers": 0,
-            # Configure the agent to run short iterations for debugging
-            # "exploration_fraction": 0.01,
-            # "learning_starts": 100,
-            "timesteps_per_iteration": 500,
-        })
+            "log_level": "INFO",
+            'num_workers': 0,
+            "vf_share_layers": True,
+            # 'ignore_worker_failures': True,
+            # 'num_cpus_per_worker':16,
+            'num_envs_per_worker': 1,
+            # 'env_config': {'nr_nodes': 12},
+            'horizon': 500,
+            'batch_mode': 'complete_episodes',
+            'model': {
+                'fcnet_hiddens': [256, 256],
+                "use_lstm": False
+            },
+            'sample_batch_size': 200,
+            'train_batch_size': 4000,
+            'vf_clip_param': 50
 
+        })
     # Attempt to restore from checkpoint if possible.
     if os.path.exists(CHECKPOINT_FILE):
         checkpoint_path = open(CHECKPOINT_FILE).read()
         print("Restoring from checkpoint path", checkpoint_path)
-        dqn.restore(checkpoint_path)
+        trainer.restore(checkpoint_path)
 
     # Serving and training loop
     while True:
-        print(pretty_print(dqn.train()))
-        checkpoint_path = dqn.save()
+        print(pretty_print(trainer.train()))
+        checkpoint_path = trainer.save()
         print("Last checkpoint", checkpoint_path)
         with open(CHECKPOINT_FILE, "w") as f:
             f.write(checkpoint_path)

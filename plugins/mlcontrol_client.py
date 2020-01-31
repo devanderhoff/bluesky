@@ -1,23 +1,29 @@
 """ External control plugin for Machine Learning applications. """
 # Import the global bluesky objects. Uncomment the ones you need
-from bluesky import stack, sim, traf, settings #, navdb, traf, sim, scr, tools
+from bluesky import stack, sim, traf, settings, net #, navdb, traf, sim, scr, tools
 import numpy as np
+import time
+from bluesky.traffic import autopilot
 from gym import spaces
-from bluesky import tools
 from ray.rllib.utils.policy_client import PolicyClient
 
-settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250)
+settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250, nr_nodes=4)
 
-
+client_mc = None
+reward = None
+idx_mc = None
+reset_bool = True
+eid = None
+obs = None
+connected = False
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
+
+# Additional initilisation code
+
 def init_plugin():
-    
-    # Additional initilisation code
     global client_mc
     client_mc = PolicyClient("http://localhost:27802")
-
-
 
     # Configuration parameters
     config = {
@@ -34,7 +40,7 @@ def init_plugin():
 
         'update':          update,
 
-        # 'preupdate':       preupdate,
+        'preupdate':       preupdate,
 
         # If your plugin has a state, you will probably need a reset function to
         # clear the state in between simulations.
@@ -43,7 +49,7 @@ def init_plugin():
 
     stackfunctions = {
         # The command name for your function
-        'MLSTEP': [
+        'MLRESET': [
             # A short usage string. This will be printed if you type HELP <name> in the BlueSky console
             'MLSTEP',
 
@@ -51,7 +57,7 @@ def init_plugin():
             '',
 
             # The name of your function in this plugin
-            mlstep,
+            ml_reset,
 
             # a longer help text of your function.
             'Simulate one MLCONTROL time interval.']
@@ -66,53 +72,61 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global client_mc, eid, reward, iter
-
-    obs = [traf.lat[0], traf.lon[0], traf.hdg[0]]
-    action = client_mc.get_action(eid, obs)
-    str_to_send = 'HDG ' + traf.id[0] + ' ' + np.array2string(action[0])
-    stack.stack(str_to_send)
-    # Autopilot.selhdgcmd(traf.id, action)
-
-    reward += 1
-    iter += 1
-    client_mc.log_returns(eid, reward, info=[])
-    print(iter)
-    print(traf.id[0])
-    if iter == 500:
-        print('total reward', reward)
-        client_mc.end_episode(eid, obs)
-        connected = False
+    global reward, idx_mc, reset_bool, connected
+    if connected:
+        # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has occured or not. Then create environment agents.
+        if reset_bool:
+            print('Created ', str(settings.n_ac), ' random aircraft, resetted!')
+            traf.create(n=settings.n_ac, aclat=52, aclon=6, achdg=360 * np.random.rand(1), acspd=settings.acspd)
+            reset_bool = False
+            return
+        print('After action HDG: ' + str(traf.hdg[0]))
+        reward += 1
+        idx_mc += 1
+        client_mc.log_returns(eid, reward, info=[])
+        if idx_mc == 500:
+            print('total reward', reward)
+            print('Done with Episode: ', eid)
+            client_mc.end_episode(eid, obs)
+            sim.reset()
 
 def preupdate():
-    pass
+    global obs, reset_bool, connected
+    if connected:
+
+
+        obs = [traf.lat[0], traf.lon[0], traf.hdg[0]]
+
+        action = client_mc.get_action(eid, obs)
+
+        print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
+        print('Before action HDG: ' + str(traf.hdg[0]))
+        traf.ap.selhdgcmd(traf.id2idx(traf.id[0]), action[0])
+
+
+    # stack.stack('HDG ' + traf.id[0] + ' ' + str(action[0]))
+    # stack.stack.process()
+
+
+
 
 def reset():
-    global client_mc, eid, reward, iter
-    # Reset node to init
-    sim.reset()
-
-    # Create random traffic
-    traf.create(n=settings.n_ac, aclat=52, aclon=6, achdg=np.random.randn(360), acspd=settings.acspd)
-
-    # Initialize client episode ID
+    global reward, idx_mc, eid, reset_bool, connected
+    reward = 0
+    idx_mc = 0
+    reset_bool = True
     eid = client_mc.start_episode(training_enabled=settings.training_enabled)
+    connected = True
+    print('Resetting with env ID:  ', eid)
+    sim.op()
+    sim.fastforward()
 
-    # Reset reward and timestep counter.
+def ml_reset():
+    global reward, idx_mc, eid, reset_bool, action_count
     reward = 0
-    iter = 0
-
-
-def mlstep():
-    global client_mc
-    global iter
-    global connected
-    global reward 
-    reward = 0
-    iter = 0
-    connected = False
-
-    print(client_mc)
-    print('penis')
-    pass
-
+    idx_mc = 0
+    reset_bool = True
+    action_count = 0
+    eid = client_mc.start_episode(training_enabled=settings.training_enabled)
+    print('reset: ', eid)
+    sim.op()
