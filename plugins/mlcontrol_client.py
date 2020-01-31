@@ -1,16 +1,23 @@
 """ External control plugin for Machine Learning applications. """
 # Import the global bluesky objects. Uncomment the ones you need
-from bluesky import stack, sim, traf  #, settings, navdb, traf, sim, scr, tools
+from bluesky import stack, sim, traf, settings #, navdb, traf, sim, scr, tools
 import numpy as np
 from gym import spaces
 from bluesky import tools
 from ray.rllib.utils.policy_client import PolicyClient
 
+settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250)
+
+
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
 def init_plugin():
     
-    # Addtional initilisation code
+    # Additional initilisation code
+    global client_mc
+    client_mc = PolicyClient("http://localhost:27802")
+
+
 
     # Configuration parameters
     config = {
@@ -59,24 +66,19 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global connected
-    global client_mc
-    global reward
-    global iter
-    global eid
+    global client_mc, eid, reward, iter
 
-    if connected == False:
-        eid = client_mc.start_episode(training_enabled=True)
-        connected = True
     obs = [traf.lat[0], traf.lon[0], traf.hdg[0]]
     action = client_mc.get_action(eid, obs)
     str_to_send = 'HDG ' + traf.id[0] + ' ' + np.array2string(action[0])
     stack.stack(str_to_send)
     # Autopilot.selhdgcmd(traf.id, action)
+
     reward += 1
     iter += 1
     client_mc.log_returns(eid, reward, info=[])
     print(iter)
+    print(traf.id[0])
     if iter == 500:
         print('total reward', reward)
         client_mc.end_episode(eid, obs)
@@ -86,12 +88,17 @@ def preupdate():
     pass
 
 def reset():
-    global eid
-    global iter
-    global reward
-    global client_mc
-    eid = client_mc.start_episode(training_enabled=True)
-    traf.create(n=1, aclat=52, aclon=6, achdg=np.random.randn(360), acspd=250)
+    global client_mc, eid, reward, iter
+    # Reset node to init
+    sim.reset()
+
+    # Create random traffic
+    traf.create(n=settings.n_ac, aclat=52, aclon=6, achdg=np.random.randn(360), acspd=settings.acspd)
+
+    # Initialize client episode ID
+    eid = client_mc.start_episode(training_enabled=settings.training_enabled)
+
+    # Reset reward and timestep counter.
     reward = 0
     iter = 0
 
@@ -104,7 +111,7 @@ def mlstep():
     reward = 0
     iter = 0
     connected = False
-    client_mc = PolicyClient("http://localhost:27802")
+
     print(client_mc)
     print('penis')
     pass

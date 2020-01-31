@@ -101,6 +101,8 @@ def main():
     #         'horizon':500,
     #         'batch_mode':'complete_episodes',
     # test = BlueSkyEnv(env_config)
+
+    bs.settings
     ray.init()
     # # # env_creator = lambda config:make_env(config,0,0)
 
