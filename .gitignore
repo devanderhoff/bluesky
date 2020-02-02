@@ -94,3 +94,8 @@ ssd.obj
 *-checkpoint.ipynb
 .ropeproject/config.py
 /tutorial/
+/extra/pong-apex.yaml
+/scenario/synthetics/super/super3_1.scn
+/scenario/synthetics/super/super3_2.scn
+/scenario/synthetics/super/super3_3.scn
+/testgpu.py
