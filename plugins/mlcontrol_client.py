@@ -77,6 +77,7 @@ def update():
     iter += 1
     client_mc.log_returns(eid, reward, info=[])
     print(iter)
+    print(traf.id[0])
     if iter == 500:
         print('total reward', reward)
         client_mc.end_episode(eid, obs)
