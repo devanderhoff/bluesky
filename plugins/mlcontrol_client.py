@@ -1,16 +1,31 @@
 """ External control plugin for Machine Learning applications. """
 # Import the global bluesky objects. Uncomment the ones you need
-from bluesky import stack, sim, traf  #, settings, navdb, traf, sim, scr, tools
+from bluesky import stack, sim, traf, settings, tools #, net #, navdb, traf, sim, scr, tools
 import numpy as np
+import time
+from bluesky.traffic import autopilot
 from gym import spaces
-from bluesky import tools
 from ray.rllib.utils.policy_client import PolicyClient
 
+settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8 )
+
+client_mc = None
+reward = None
+idx_mc = None
+reset_bool = True
+eid = None
+obs = None
+connected = False
+lat_eham = 52.18
+lon_eham = 4.45
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
+
+# Additional initilisation code
+
 def init_plugin():
-    
-    # Addtional initilisation code
+    global client_mc
+    client_mc = PolicyClient("http://localhost:27802")
 
     # Configuration parameters
     config = {
@@ -27,7 +42,7 @@ def init_plugin():
 
         'update':          update,
 
-        # 'preupdate':       preupdate,
+        'preupdate':       preupdate,
 
         # If your plugin has a state, you will probably need a reset function to
         # clear the state in between simulations.
@@ -36,7 +51,7 @@ def init_plugin():
 
     stackfunctions = {
         # The command name for your function
-        'MLSTEP': [
+        'MLRESET': [
             # A short usage string. This will be printed if you type HELP <name> in the BlueSky console
             'MLSTEP',
 
@@ -44,7 +59,7 @@ def init_plugin():
             '',
 
             # The name of your function in this plugin
-            mlstep,
+            ml_reset,
 
             # a longer help text of your function.
             'Simulate one MLCONTROL time interval.']
@@ -59,54 +74,95 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global connected
-    global client_mc
-    global reward
-    global iter
-    global eid
+    global reward, idx_mc, reset_bool, connected
+    if connected:
+        # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has occured or not. Then create environment agents.
+        if reset_bool:
+            #Randomize starting location depending on boundaries in settings.
+            aclat = np.random.rand(settings.n_ac) * (settings.max_lat - settings.min_lat) + settings.min_lat
+            aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
+            achdg = np.random.randint(1, 360, settings.n_ac)
 
-    if connected == False:
-        eid = client_mc.start_episode(training_enabled=True)
-        connected = True
-    obs = [traf.lat[0], traf.lon[0], traf.hdg[0]]
-    action = client_mc.get_action(eid, obs)
-    str_to_send = 'HDG ' + traf.id[0] + ' ' + np.array2string(action[0])
-    stack.stack(str_to_send)
-    # Autopilot.selhdgcmd(traf.id, action)
-    reward += 1
-    iter += 1
-    client_mc.log_returns(eid, reward, info=[])
-    print(iter)
-    print(traf.id[0])
-    if iter == 500:
-        print('total reward', reward)
-        client_mc.end_episode(eid, obs)
-        connected = False
+            print('Created ', str(settings.n_ac), ' random aircraft, resetted!')
+            traf.create(n=settings.n_ac, aclat=aclat, aclon=aclon, achdg=achdg, #360 * np.random.rand(1)
+            acspd=300)#settings.acspd)
+            reset_bool = False
+            return
+        # print('After action HDG: ' + str(traf.hdg[0]))
+        # calc_state()
+        dist_wpt = tools.geo.kwikdist(traf.lat[0], traf.lon[0], lat_eham, lon_eham)
+        # print(dist_wpt)
+        reward += 3/dist_wpt
+        idx_mc += 1
+        client_mc.log_returns(eid, reward, info=[])
+        if idx_mc == 500:
+            print('total reward', reward)
+            print('Done with Episode: ', eid)
+            client_mc.end_episode(eid, obs)
+            sim.reset()
 
 def preupdate():
-    pass
+    global obs, reset_bool, connected
+    if connected:
+
+        dist_wpt = tools.geo.kwikdist(traf.lat[0], traf.lon[0], lat_eham, lon_eham)
+
+
+        obs = [traf.lat[0], traf.lon[0], traf.hdg[0], dist_wpt]
+
+
+        action = client_mc.get_action(eid, obs)
+
+        # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
+        # print('Before action HDG: ' + str(traf.hdg[0]))
+        traf.ap.selhdgcmd(traf.id2idx(traf.id[0]), action[0])
+
+
+    # stack.stack('HDG ' + traf.id[0] + ' ' + str(action[0]))
+    # stack.stack.process()
+
+
+
 
 def reset():
-    global eid
-    global iter
-    global reward
-    global client_mc
-    eid = client_mc.start_episode(training_enabled=True)
-    traf.create(n=1, aclat=52, aclon=6, achdg=np.random.randn(360), acspd=250)
+    global reward, idx_mc, eid, reset_bool, connected
     reward = 0
-    iter = 0
+    idx_mc = 0
+    reset_bool = True
+    eid = client_mc.start_episode(training_enabled=settings.training_enabled)
+    connected = True
+    print('Resetting with env ID:  ', eid)
+    sim.op()
+    sim.fastforward()
 
-
-def mlstep():
-    global client_mc
-    global iter
-    global connected
-    global reward 
+def ml_reset():
+    global reward, idx_mc, eid, reset_bool, action_count
     reward = 0
-    iter = 0
-    connected = False
-    client_mc = PolicyClient("http://localhost:27802")
-    print(client_mc)
-    print('penis')
-    pass
+    idx_mc = 0
+    reset_bool = True
+    action_count = 0
+    eid = client_mc.start_episode(training_enabled=settings.training_enabled)
+    print('reset: ', eid)
+    sim.op()
 
+
+def calc_state():
+    # Required information:
+    #traf.lat
+    #traf.lon
+    #traf.hdg
+    #traf.id
+    #latlong eham
+    lat_list = np.append(traf.lat, lat_eham)
+    lon_list = np.append(traf.lon, lon_eham)
+
+    qdr, dist = tools.geo.kwikqdrdist_matrix(traf.lat, traf.lon, traf.lat, traf.lon)
+    print('help')
+
+    return
+
+def rand_latlon():
+    aclat = np.random.rand(settings.n_ac) * (settings.max_lat - settings.min_lat) + settings.min_lat
+    aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
+    achdg = np.random.randint(1, 360, settings.n_ac)
+    acspd = np.ones(settings.n_ac) * 250
