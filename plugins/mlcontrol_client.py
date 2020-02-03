@@ -74,7 +74,7 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global reward, idx_mc, reset_bool, connected
+    global reward, idx_mc, reset_bool, connected, obs
     if connected:
         # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has occured or not. Then create environment agents.
         if reset_bool:
@@ -105,17 +105,16 @@ def preupdate():
     global obs, reset_bool, connected
     if connected:
 
+
+        calc_state()
         dist_wpt = tools.geo.kwikdist(traf.lat[0], traf.lon[0], lat_eham, lon_eham)
-
-
         obs = [traf.lat[0], traf.lon[0], traf.hdg[0], dist_wpt]
-
-
         action = client_mc.get_action(eid, obs)
+        # print(idx_mc, action)
+        print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
 
-        # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
         # print('Before action HDG: ' + str(traf.hdg[0]))
-        traf.ap.selhdgcmd(traf.id2idx(traf.id[0]), action[0])
+        traf.ap.selhdgcmd(traf.id2idx(traf.id[0]), action[0]*100)
 
 
     # stack.stack('HDG ' + traf.id[0] + ' ' + str(action[0]))
@@ -153,13 +152,29 @@ def calc_state():
     #traf.hdg
     #traf.id
     #latlong eham
+    # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
     lat_list = np.append(traf.lat, lat_eham)
     lon_list = np.append(traf.lon, lon_eham)
 
-    qdr, dist = tools.geo.kwikqdrdist_matrix(traf.lat, traf.lon, traf.lat, traf.lon)
-    print('help')
+    qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list), np.asmatrix(lon_list))
 
-    return
+    obs_matrix_first = np.concatenate([traf.lat.reshape(-1,1), traf.lon.reshape(-1,1), traf.hdg.reshape(-1,1), np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
+
+    dist = np.asarray(dist[:-1, :-1])
+    qdr = np.asarray(qdr[:-1, :-1])
+
+    sort_idx = np.argsort(dist, axis=1)
+    dist = np.take_along_axis(dist, sort_idx, axis=1)
+    qdr = np.take_along_axis(qdr, sort_idx, axis=1)
+
+    dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
+    qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
+
+    dist_ac = np.hstack([np.hstack([dist[i], qdr[i]])for i in range(len(dist))])
+    obs_matrix_first = np.concatenate([obs_matrix_first, dist_ac], axis=1)
+    obs = dict(zip(traf.id, obs_matrix_first))
+
+    return obs
 
 def rand_latlon():
     aclat = np.random.rand(settings.n_ac) * (settings.max_lat - settings.min_lat) + settings.min_lat

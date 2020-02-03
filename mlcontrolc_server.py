@@ -12,7 +12,7 @@ from ray.rllib.agents.ppo import PPOAgent
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 27802
-CHECKPOINT_FILE = "last_checkpoint.out"
+CHECKPOINT_FILE = "test2.out"
 
 low_obs = np.array([40, 0, 0,0])
 high_obs = np.array([60, 10, 360,1000])
@@ -31,8 +31,9 @@ class BlueSkyServer(ExternalEnv):
         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
         server.serve_forever()
 
-low_obs = np.array([40, 0, 0,0])
-high_obs = np.array([60, 10, 360,1000])
+#multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
+low_obs = np.array([40, 0, 0, 4, 0, 4, 0, 4, 0])
+high_obs = np.array([60, 10, 360, 1000, 360, 1000, 360, 1000, 360])
 observation_space_multi = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 action_space_multi = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
 
@@ -72,7 +73,7 @@ if __name__ == "__main__":
         config={
             "log_level": "INFO",
             'num_workers': 0,
-            "vf_share_layers": True,
+            "vf_share_layers": False,
             # 'ignore_worker_failures': True,
             # 'num_cpus_per_worker':16,
             'num_envs_per_worker': 1,
@@ -83,8 +84,8 @@ if __name__ == "__main__":
                 'fcnet_hiddens': [256, 256],
                 "use_lstm": False
             },
-            'sample_batch_size': 200,
-            'train_batch_size': 4000,
+            'sample_batch_size': 5000,
+            'train_batch_size': 80000,
             'vf_clip_param': 50
 
         })
