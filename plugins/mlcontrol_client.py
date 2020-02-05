@@ -2,6 +2,7 @@
 # Import the global bluesky objects. Uncomment the ones you need
 from bluesky import stack, sim, traf, settings, tools #, net #, navdb, traf, sim, scr, tools
 import numpy as np
+import collections
 import time
 from bluesky.traffic import autopilot
 from gym import spaces
@@ -15,7 +16,9 @@ idx_mc = None
 reset_bool = True
 eid = None
 obs = None
+prev_obs = None
 connected = False
+done_count = 0
 lat_eham = 52.18
 lon_eham = 4.45
 ### Initialization function of your plugin. Do not change the name of this
@@ -74,7 +77,7 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global reward, idx_mc, reset_bool, connected
+    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count
     if connected:
         # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has occured or not. Then create environment agents.
         if reset_bool:
@@ -82,40 +85,53 @@ def update():
             aclat = np.random.rand(settings.n_ac) * (settings.max_lat - settings.min_lat) + settings.min_lat
             aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
             achdg = np.random.randint(1, 360, settings.n_ac)
-
+            acalt = np.ones(settings.n_ac) * 7620
+            acspd = np.ones(settings.n_ac) * 300
             print('Created ', str(settings.n_ac), ' random aircraft, resetted!')
             traf.create(n=settings.n_ac, aclat=aclat, aclon=aclon, achdg=achdg, #360 * np.random.rand(1)
-            acspd=300)#settings.acspd)
+            acspd=150, acalt=acalt, actype='B777')#settings.acspd)
             reset_bool = False
             return
         # print('After action HDG: ' + str(traf.hdg[0]))
-        # calc_state()
-        dist_wpt = tools.geo.kwikdist(traf.lat[0], traf.lon[0], lat_eham, lon_eham)
+        obs = calc_state()
+        reward, done = calc_reward()
+        # for agent_id in done.keys():
+        #     if done[agent_id]:
+        #         traf.delete(traf.id2idx(agent_id))
+        #         done_count += 1
         # print(dist_wpt)
-        reward += 3/dist_wpt
         idx_mc += 1
         client_mc.log_returns(eid, reward, info=[])
-        if idx_mc == 500:
+        if idx_mc == 300 or done_count == settings.n_ac:
             print('total reward', reward)
             print('Done with Episode: ', eid)
             client_mc.end_episode(eid, obs)
             sim.reset()
 
 def preupdate():
-    global obs, reset_bool, connected
+    global obs, reset_bool, connected, prev_obs
     if connected:
-
-        dist_wpt = tools.geo.kwikdist(traf.lat[0], traf.lon[0], lat_eham, lon_eham)
-
-
-        obs = [traf.lat[0], traf.lon[0], traf.hdg[0], dist_wpt]
-
-
+        obs = calc_state()
         action = client_mc.get_action(eid, obs)
+        # print(action)
+        for idx_mc, action in action.items():
+            # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
+            # print('Before action HDG: ' + str(traf.hdg[0]))
+            if action == 0:
+                action_hdg = -25
+            elif action == 1:
+                action_hdg = -12
+            elif action == 2:
+                action_hdg = 0
+            elif action == 3:
+                action_hdg = 12
+            else:
+                action_hdg = 25
 
-        # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
-        # print('Before action HDG: ' + str(traf.hdg[0]))
-        traf.ap.selhdgcmd(traf.id2idx(traf.id[0]), action[0])
+            action_tot = obs[idx_mc][2] + action_hdg
+            traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+        prev_obs = obs
+
 
 
     # stack.stack('HDG ' + traf.id[0] + ' ' + str(action[0]))
@@ -133,6 +149,7 @@ def reset():
     connected = True
     print('Resetting with env ID:  ', eid)
     sim.op()
+    traf.trails.setTrails
     sim.fastforward()
 
 def ml_reset():
@@ -153,13 +170,66 @@ def calc_state():
     #traf.hdg
     #traf.id
     #latlong eham
+    # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
     lat_list = np.append(traf.lat, lat_eham)
     lon_list = np.append(traf.lon, lon_eham)
 
-    qdr, dist = tools.geo.kwikqdrdist_matrix(traf.lat, traf.lon, traf.lat, traf.lon)
-    print('help')
+    qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list),
+                                             np.asmatrix(lon_list))
 
-    return
+    obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
+                                       np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
+
+    dist = np.asarray(dist[:-1, :-1])
+    qdr = np.asarray(qdr[:-1, :-1])
+
+    sort_idx = np.argsort(dist, axis=1)
+    dist = np.take_along_axis(dist, sort_idx, axis=1)
+    qdr = np.take_along_axis(qdr, sort_idx, axis=1)
+
+    dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
+    qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
+
+    dist_ac = np.hstack([np.hstack([dist[i], qdr[i]])for i in range(len(dist))])
+    obs_matrix_first = np.concatenate([obs_matrix_first, dist_ac], axis=1)
+    obs_c = dict(zip(traf.id, obs_matrix_first))
+
+    return obs_c
+
+
+def calc_reward():
+    global obs, prev_obs
+    # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
+    ## This function calculates the "intrensic" reward as well as additional reward shaping
+    # Constants to determine faulty states:
+    los = 1.05 #nm
+    wpt_reached = 5 #nm
+    gamma = 0.99 #Match with trainer/implement in settings
+
+    reward = dict.fromkeys(obs.keys())
+    done = dict.fromkeys(obs.keys())
+
+    for agent_id in reward.keys():
+        # set initial reward to -1, as for each timestep spend a penalty is introduced.
+        reward[agent_id] = 0
+        done[agent_id] = False
+        # First check if goal is reached
+        if obs[agent_id][3] <= wpt_reached:
+            reward[agent_id] += 100
+            done[agent_id] = True
+
+        # Check if there are any collisions
+        dist_idx = np.arange(5, len(obs[agent_id])-1, 2)
+        if any(obs[agent_id][dist_idx] <= los):
+            reward[agent_id] += -200
+
+        # Implement reward shaping:
+        F = gamma*(10/obs[agent_id][3]) - 10/prev_obs[agent_id][3]
+
+        # Final reward
+        reward[agent_id] += F
+
+    return reward, done
 
 def rand_latlon():
     aclat = np.random.rand(settings.n_ac) * (settings.max_lat - settings.min_lat) + settings.min_lat

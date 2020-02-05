@@ -1,6 +1,7 @@
 import os
-from gym import spaces
+import gym
 import numpy as np
+import sys, os
 
 import ray
 from ray.rllib.env.external_env import ExternalEnv
@@ -9,51 +10,68 @@ from ray.rllib.utils.policy_server import PolicyServer
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 from ray.rllib.agents.ppo import PPOAgent
+from ray.rllib.models import ModelCatalog
+
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 27802
-CHECKPOINT_FILE = "last_checkpoint.out"
+CHECKPOINT_FILE = "test_discrete_1.out"
 
-low_obs = np.array([40, 0, 0,0])
-high_obs = np.array([60, 10, 360,1000])
-observation_space_single = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-action_space_single = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
+# low_obs = np.array([40, 0, 0,0])
+# high_obs = np.array([60, 10, 360,1000])
+# observation_space_single = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+# action_space_single = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
+#
+# class BlueSkyServer(ExternalEnv):
+#     def __init__(self, action_space_single, observation_space_single):
+#         ExternalEnv.__init__(
+#             self, action_space_single,
+#             observation_space_single)
+#
+#     def run(self):
+#         print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
+#                                                        SERVER_PORT))
+#         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
+#         server.serve_forever()
 
-class BlueSkyServer(ExternalEnv):
-    def __init__(self, action_space_single, observation_space_single):
-        ExternalEnv.__init__(
-            self, action_space_single,
-            observation_space_single)
+#multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
+low_obs = np.array([20, -20, 0, -1, 0, -1, 0, -1, 0])
+high_obs = np.array([80, 20, 360, 1000, 360, 1000, 360, 1000, 360])
+observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+# action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
+action_space_multi_discrete = gym.spaces.Discrete(5)
 
-    def run(self):
-        print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
-                                                       SERVER_PORT))
-        server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
-        server.serve_forever()
-
-low_obs = np.array([40, 0, 0,0])
-high_obs = np.array([60, 10, 360,1000])
-observation_space_multi = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-action_space_multi = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
 
 class BlueSkyServerMultiAgent(ExternalMultiAgentEnv):
-    def __init__(self, action_space_multi, observation_space_multi):
+    def __init__(self, action_space_multi_discrete, observation_space_multi):
         ExternalEnv.__init__(
-            self, action_space_multi,
+            self, action_space_multi_discrete,
             observation_space_multi)
 
     def run(self):
         print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
                                                        SERVER_PORT))
+        blockPrint()
         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
         server.serve_forever()
+
+
+def blockPrint():
+    sys.stdout = open(os.devnull, 'w')
+
+
+# Restore
+def enablePrint():
+    sys.stdout = sys.__stdout__
+
 
 
 
 
 if __name__ == "__main__":
     ray.init()
-    register_env("srv", lambda _: BlueSkyServer(action_space_single, observation_space_single))
+    # register_env("srv", lambda _: BlueSkyServer(action_space_single, observation_space_single))
+    register_env("srv", lambda _: BlueSkyServerMultiAgent(action_space_multi_discrete, observation_space_multi))
 
     # We use DQN since it supports off-policy actions, but you can choose and
     # configure any agent.
@@ -70,22 +88,23 @@ if __name__ == "__main__":
     trainer = PPOAgent(
         env="srv",
         config={
-            "log_level": "INFO",
+            # "log_level": "INFO",
             'num_workers': 0,
-            "vf_share_layers": True,
+            # "vf_share_layers": False,
             # 'ignore_worker_failures': True,
             # 'num_cpus_per_worker':16,
-            'num_envs_per_worker': 1,
+            # 'num_envs_per_worker': 1,
+            # 'env_config': {'nr_nodes': 12},
             # 'env_config': {'nr_nodes': 12},
             # 'horizon': 500,
-            'batch_mode': 'complete_episodes',
-            'model': {
-                'fcnet_hiddens': [256, 256],
-                "use_lstm": False
-            },
-            'sample_batch_size': 200,
-            'train_batch_size': 4000,
-            'vf_clip_param': 50
+            # 'batch_mode': 'complete_episodes',
+            # 'model': {
+            #     'fcnet_hiddens': [256, 256],
+            #     "use_lstm": False
+            # },
+            # 'sample_batch_size': 5000,
+            # 'train_batch_size': 80000,
+            # 'vf_clip_param': 50
 
         })
     # Attempt to restore from checkpoint if possible.
