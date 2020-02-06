@@ -27,8 +27,8 @@ lon_eham = 4.45
 # Additional initilisation code
 
 def init_plugin():
-    global client_mc
-    client_mc = PolicyClient("http://localhost:27802")
+    # global client_mc
+    # client_mc = PolicyClient("http://localhost:27802")
 
     # Configuration parameters
     config = {
@@ -56,10 +56,10 @@ def init_plugin():
         # The command name for your function
         'MLRESET': [
             # A short usage string. This will be printed if you type HELP <name> in the BlueSky console
-            'MLSTEP',
+            'MLRESET port',
 
             # A list of the argument types your function accepts. For a description of this, see ...
-            '',
+            'txt',
 
             # The name of your function in this plugin
             ml_reset,
@@ -102,7 +102,7 @@ def update():
         # print(dist_wpt)
         idx_mc += 1
         client_mc.log_returns(eid, reward, info=[])
-        if idx_mc == 300 or done_count == settings.n_ac:
+        if idx_mc == 1000 or done_count == settings.n_ac:
             print('total reward', reward)
             print('Done with Episode: ', eid)
             client_mc.end_episode(eid, obs)
@@ -149,18 +149,14 @@ def reset():
     connected = True
     print('Resetting with env ID:  ', eid)
     sim.op()
-    traf.trails.setTrails
-    sim.fastforward()
+    # traf.trails.setTrails
+    # sim.fastforward()
 
-def ml_reset():
-    global reward, idx_mc, eid, reset_bool, action_count
-    reward = 0
-    idx_mc = 0
-    reset_bool = True
-    action_count = 0
-    eid = client_mc.start_episode(training_enabled=settings.training_enabled)
-    print('reset: ', eid)
-    sim.op()
+def ml_reset(port):
+    global client_mc
+    host_ip = "http://localhost:" + port
+    print(host_ip)
+    client_mc = PolicyClient(host_ip)
 
 
 def calc_state():
