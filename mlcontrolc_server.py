@@ -12,11 +12,15 @@ from ray.tune.registry import register_env
 from ray.rllib.agents.ppo import APPOTrainer, PPOTrainer
 from ray.rllib.models import ModelCatalog
 from ray.rllib import rollout
+from bluesky import settings
 
 
+settings.set_variable_defaults(n_ac=20, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8, n_neighbours=5)
+print(settings.n_neighbours)
+print(settings.n_ac)
 SERVER_ADDRESS = "localhost"
 server_port = 27800
-CHECKPOINT_FILE = "Discrete_test_2.out"
+CHECKPOINT_FILE = "delete_ac_test_20.out"
 
 # low_obs = np.array([40, 0, 0,0])
 # high_obs = np.array([60, 10, 360,1000])
@@ -36,8 +40,23 @@ CHECKPOINT_FILE = "Discrete_test_2.out"
 #         server.serve_forever()
 
 #multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
-low_obs = np.array([20, -20, 0, -1, 0, -1, 0, -1, 0])
-high_obs = np.array([80, 20, 360, 1000, 360, 1000, 360, 1000, 360])
+low_obs = np.array([20, -20, 0, 0, 0]) #-1, 0, -1, 0])
+high_obs = np.array([80, 20, 360, 1000, 360]) #, 360, 1000, 360, 1000, 360])
+fill_low = np.zeros(settings.n_neighbours*2)
+print(fill_low)
+
+fill_dist = np.array([1000])
+fill_hdg = np.array([360])
+fill = np.concatenate([fill_dist, fill_hdg])
+print(fill)
+high_obs_fill = np.array([])
+
+for i in range(settings.n_neighbours):
+    high_obs_fill = np.hstack([high_obs_fill,fill])
+
+print(high_obs_fill)
+low_obs = np.concatenate([low_obs, fill_low])
+high_obs = np.concatenate([high_obs, high_obs_fill])
 observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 # action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
 action_space_multi_discrete = gym.spaces.Discrete(5)
@@ -100,7 +119,7 @@ if __name__ == "__main__":
                 'num_gpus':1,
                 'model': {
                      'fcnet_hiddens': [256, 256],
-                     "use_lstm": True
+                     # "use_lstm": True
                  },
                 # 'sample_batch_size': 5000,
                 # 'train_batch_size': 80000,

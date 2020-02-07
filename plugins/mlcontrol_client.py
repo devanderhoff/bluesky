@@ -8,8 +8,8 @@ from bluesky.traffic import autopilot
 from gym import spaces
 from ray.rllib.utils.policy_client import PolicyClient
 
-settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8 )
-
+settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8, n_neighbours=2 )
+print(settings.n_ac)
 client_mc = None
 reward = None
 idx_mc = None
@@ -18,6 +18,9 @@ eid = None
 obs = None
 prev_obs = None
 connected = False
+first_time = None
+done = None
+delete_dict = None
 done_count = 0
 lat_eham = 52.18
 lon_eham = 4.45
@@ -77,7 +80,7 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count
+    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count, final_obs, done, delete_dict
     if connected:
         # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has occured or not. Then create environment agents.
         if reset_bool:
@@ -86,7 +89,7 @@ def update():
             aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
             achdg = np.random.randint(1, 360, settings.n_ac)
             acalt = np.ones(settings.n_ac) * 7620
-            acspd = np.ones(settings.n_ac) * 300
+            # acspd = np.ones(settings.n_ac) * 300
             print('Created ', str(settings.n_ac), ' random aircraft, resetted!')
             traf.create(n=settings.n_ac, aclat=aclat, aclon=aclon, achdg=achdg, #360 * np.random.rand(1)
             acspd=150, acalt=acalt, actype='B777')#settings.acspd)
@@ -95,23 +98,36 @@ def update():
         # print('After action HDG: ' + str(traf.hdg[0]))
         obs = calc_state()
         reward, done = calc_reward()
-        # for agent_id in done.keys():
-        #     if done[agent_id]:
-        #         traf.delete(traf.id2idx(agent_id))
-        #         done_count += 1
-        # print(dist_wpt)
+
+        for agent_id in done.keys():
+            if done[agent_id] and not delete_dict[agent_id]:
+                traf.delete(traf.id2idx(agent_id))
+                print('Deleted ', agent_id)
+                done_count += 1
+                final_obs[agent_id] = obs[agent_id]
+                delete_dict[agent_id] = True
+
         idx_mc += 1
-        client_mc.log_returns(eid, reward, info=[])
-        if idx_mc == 1000 or done_count == settings.n_ac:
+        client_mc.log_returns(eid, reward, done, info=[])
+        if idx_mc == 500 or done_count == settings.n_ac:
+            for agent_id in done.keys():
+                if not done[agent_id]:
+                    final_obs[agent_id] = obs[agent_id]
+
             print('total reward', reward)
             print('Done with Episode: ', eid)
-            client_mc.end_episode(eid, obs)
+            client_mc.end_episode(eid, final_obs)
             sim.reset()
 
 def preupdate():
-    global obs, reset_bool, connected, prev_obs
+    global obs, reset_bool, connected, prev_obs, first_time, final_obs, done, delete_dict
     if connected:
         obs = calc_state()
+        if first_time:
+            done = dict.fromkeys(obs.keys())
+            delete_dict = dict.fromkeys(obs.keys(), False)
+            final_obs = dict.fromkeys(obs.keys())
+            first_time = False
         action = client_mc.get_action(eid, obs)
         # print(action)
         for idx_mc, action in action.items():
@@ -141,16 +157,17 @@ def preupdate():
 
 
 def reset():
-    global reward, idx_mc, eid, reset_bool, connected
+    global reward, idx_mc, eid, reset_bool, connected, first_time
     reward = 0
     idx_mc = 0
     reset_bool = True
+    first_time = True
     eid = client_mc.start_episode(training_enabled=settings.training_enabled)
     connected = True
     print('Resetting with env ID:  ', eid)
     sim.op()
     # traf.trails.setTrails
-    # sim.fastforward()
+    sim.fastforward()
 
 def ml_reset(port):
     global client_mc
@@ -183,18 +200,33 @@ def calc_state():
     dist = np.take_along_axis(dist, sort_idx, axis=1)
     qdr = np.take_along_axis(qdr, sort_idx, axis=1)
 
+    n_ac_neighbours = np.size(dist, axis=1) - 1
+    n_ac_current = np.size(dist, axis=0)
+
     dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
     qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
 
-    dist_ac = np.hstack([np.hstack([dist[i], qdr[i]])for i in range(len(dist))])
-    obs_matrix_first = np.concatenate([obs_matrix_first, dist_ac], axis=1)
+
+
+    if n_ac_neighbours < settings.n_neighbours:
+        nr_fill = settings.n_neighbours - n_ac_neighbours
+        fill_mask_dist = np.full((n_ac_current,1), 999)
+        fill_mask_qdr = np.full((n_ac_current,1), 180)
+        fill_mask = np.concatenate([fill_mask_dist,fill_mask_qdr], axis=1)
+        comb_ac = np.hstack([np.hstack([dist[i], qdr[i]])for i in range(n_ac_neighbours)])
+        for i in range(nr_fill):
+            comb_ac = np.hstack((comb_ac, fill_mask))
+    else:
+        comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(settings.n_neighbours)])
+
+    obs_matrix_first = np.concatenate([obs_matrix_first, comb_ac], axis=1)
     obs_c = dict(zip(traf.id, obs_matrix_first))
 
     return obs_c
 
 
 def calc_reward():
-    global obs, prev_obs
+    global obs, prev_obs, done
     # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
     ## This function calculates the "intrensic" reward as well as additional reward shaping
     # Constants to determine faulty states:
@@ -203,7 +235,7 @@ def calc_reward():
     gamma = 0.99 #Match with trainer/implement in settings
 
     reward = dict.fromkeys(obs.keys())
-    done = dict.fromkeys(obs.keys())
+
 
     for agent_id in reward.keys():
         # set initial reward to -1, as for each timestep spend a penalty is introduced.
