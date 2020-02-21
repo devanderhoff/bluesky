@@ -189,6 +189,7 @@ def calc_state():
 
     qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list),
                                              np.asmatrix(lon_list))
+    qdr = degto180(qdr)
 
     obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
                                        np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
@@ -264,3 +265,7 @@ def rand_latlon():
     aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
     achdg = np.random.randint(1, 360, settings.n_ac)
     acspd = np.ones(settings.n_ac) * 250
+
+def degto180(angle):
+    """Change to domain -180,180 """
+    return (angle + 180.) % 360 - 180.

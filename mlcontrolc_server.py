@@ -15,68 +15,96 @@ from ray.rllib import rollout
 from bluesky import settings
 
 
-settings.set_variable_defaults(n_ac=20, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8, n_neighbours=5)
+settings.set_variable_defaults(n_ac=5, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8, n_neighbours=3)
 print(settings.n_neighbours)
 print(settings.n_ac)
 SERVER_ADDRESS = "localhost"
 server_port = 27800
 CHECKPOINT_FILE = "delete_ac_test_20.out"
+multiagent = True
 
-# low_obs = np.array([40, 0, 0,0])
-# high_obs = np.array([60, 10, 360,1000])
-# observation_space_single = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-# action_space_single = spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
-#
-# class BlueSkyServer(ExternalEnv):
-#     def __init__(self, action_space_single, observation_space_single):
-#         ExternalEnv.__init__(
-#             self, action_space_single,
-#             observation_space_single)
-#
-#     def run(self):
-#         print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
-#                                                        SERVER_PORT))
-#         server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
-#         server.serve_forever()
+
+if not multiagent:
+    low_obs = np.array([20, -20, 0, 0, -180])  # -1, 0, -1, 0])
+    high_obs = np.array([80, 20, 360, 1000, 180])  # , 360, 1000, 360, 1000, 360])
+    fill_low = np.zeros(settings.n_neighbours * 2)
+    print(fill_low)
+
+    fill_dist = np.array([1000])
+    fill_hdg = np.array([180])
+    fill = np.concatenate([fill_dist, fill_hdg])
+    print(fill)
+    high_obs_fill = np.array([])
+
+    for i in range(settings.n_neighbours):
+        high_obs_fill = np.hstack([high_obs_fill, fill])
+
+    print(high_obs_fill)
+    low_obs = np.concatenate([low_obs, fill_low])
+    high_obs = np.concatenate([high_obs, high_obs_fill])
+    observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+    # action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
+    action_space_multi_discrete = gym.spaces.Discrete(5)
+
+    class BlueSkyServer(ExternalEnv):
+        def __init__(self, action_space_single, observation_space_single):
+            ExternalEnv.__init__(
+                self, action_space_single,
+                observation_space_single)
+
+        def run(self):
+            print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
+                                                           server_port))
+            server = PolicyServer(self, SERVER_ADDRESS, server_port)
+            server.serve_forever()
 
 #multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
-low_obs = np.array([20, -20, 0, 0, 0]) #-1, 0, -1, 0])
-high_obs = np.array([80, 20, 360, 1000, 360]) #, 360, 1000, 360, 1000, 360])
-fill_low = np.zeros(settings.n_neighbours*2)
-print(fill_low)
+if multiagent:
+    # Standard S0
+    low_obs = np.array([20, -20, 0, 0, -180]) #-1, 0, -1, 0])
+    high_obs = np.array([80, 20, 360, 1000, 180]) #, 360, 1000, 360, 1000, 360])
 
-fill_dist = np.array([1000])
-fill_hdg = np.array([360])
-fill = np.concatenate([fill_dist, fill_hdg])
-print(fill)
-high_obs_fill = np.array([])
+    fill_low_hdg = np.array([-180])
+    fill_low_dist = np.array([0])
+    fill_low = np.concatenate([fill_low_dist, fill_low_hdg])
+    # print(fill_low)
+    fill_low_obs = np.array([])
 
-for i in range(settings.n_neighbours):
-    high_obs_fill = np.hstack([high_obs_fill,fill])
+    for i in range(settings.n_neighbours):
+        fill_low_obs = np.hstack([fill_low_obs, fill_low])
+    # print(fill_low_obs)
 
-print(high_obs_fill)
-low_obs = np.concatenate([low_obs, fill_low])
-high_obs = np.concatenate([high_obs, high_obs_fill])
-observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-# action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
-action_space_multi_discrete = gym.spaces.Discrete(5)
+    fill_dist = np.array([1000])
+    fill_hdg = np.array([180])
+    fill = np.concatenate([fill_dist, fill_hdg])
+    high_obs_fill = np.array([])
+
+    for i in range(settings.n_neighbours):
+        high_obs_fill = np.hstack([high_obs_fill, fill])
+
+    low_obs = np.concatenate([low_obs, fill_low_obs])
+    high_obs = np.concatenate([high_obs, high_obs_fill])
+    # print(high_obs)
+    observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+    # action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
+    action_space_multi_discrete = gym.spaces.Discrete(5)
 
 
-class BlueSkyServerMultiAgent(ExternalMultiAgentEnv):
-    def __init__(self, action_space_multi_discrete, observation_space_multi, max_concurrent, env_config):
-        ExternalEnv.__init__(
-            self, action_space_multi_discrete,
-            observation_space_multi, max_concurrent)
-        self.env_config = env_config
-        self.server_port = env_config['server_port']
-        print(env_config.worker_index)
+    class BlueSkyServerMultiAgent(ExternalMultiAgentEnv):
+        def __init__(self, action_space_multi_discrete, observation_space_multi, max_concurrent, env_config):
+            ExternalEnv.__init__(
+                self, action_space_multi_discrete,
+                observation_space_multi, max_concurrent)
+            self.env_config = env_config
+            self.server_port = env_config['server_port']
+            print(env_config.worker_index)
 
-    def run(self):
-        SERVER_PORT_new = self.server_port + self.env_config.worker_index
-        print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
-                                                       SERVER_PORT_new))
-        server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT_new)
-        server.serve_forever()
+        def run(self):
+            SERVER_PORT_new = self.server_port + self.env_config.worker_index
+            print("Starting policy server at {}:{}".format(SERVER_ADDRESS,
+                                                           SERVER_PORT_new))
+            server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT_new)
+            server.serve_forever()
 
 if __name__ == "__main__":
     ray.init()
