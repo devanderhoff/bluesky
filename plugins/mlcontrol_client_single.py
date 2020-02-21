@@ -36,7 +36,7 @@ def init_plugin():
     # Configuration parameters
     config = {
         # The name of your plugin
-        'plugin_name':     'MLCONTROLC',
+        'plugin_name':     'MLCONTROLCSINGLE',
 
         # The type of this plugin. For now, only simulation plugins are possible.
         'plugin_type':     'sim',
@@ -133,26 +133,19 @@ def preupdate():
         for idx_mc, action in action.items():
             # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
             # print('Before action HDG: ' + str(traf.hdg[0]))
-            ## DISCRETE ##
-            # if action == 0:
-            #     action_hdg = -25
-            # elif action == 1:
-            #     action_hdg = -12
-            # elif action == 2:
-            #     action_hdg = 0
-            # elif action == 3:
-            #     action_hdg = 12
-            # else:
-            #     action_hdg = 25
-            ## ##
-            action_temp = round(action[0] * 180)
-            action_tot = (obs[idx_mc][2] + action_temp) % 360
-            traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+            if action == 0:
+                action_hdg = -25
+            elif action == 1:
+                action_hdg = -12
+            elif action == 2:
+                action_hdg = 0
+            elif action == 3:
+                action_hdg = 12
+            else:
+                action_hdg = 25
 
-        # print(action)
-        # action_tot = obs[idx_mc][2] + action
-        # print(action_tot)
-        # traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+            action_tot = obs[idx_mc][2] + action_hdg
+            traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
         prev_obs = obs
 
 
@@ -196,7 +189,6 @@ def calc_state():
 
     qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list),
                                              np.asmatrix(lon_list))
-    qdr = degto180(qdr)
 
     obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
                                        np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
@@ -272,7 +264,3 @@ def rand_latlon():
     aclon = np.random.rand(settings.n_ac) * (settings.max_lon - settings.min_lon) + settings.min_lon
     achdg = np.random.randint(1, 360, settings.n_ac)
     acspd = np.ones(settings.n_ac) * 250
-
-def degto180(angle):
-    """Change to domain -180,180 """
-    return (angle + 180.) % 360 - 180.

@@ -20,7 +20,7 @@ print(settings.n_neighbours)
 print(settings.n_ac)
 SERVER_ADDRESS = "localhost"
 server_port = 27800
-CHECKPOINT_FILE = "delete_ac_test_20.out"
+CHECKPOINT_FILE = "agsg.out"
 multiagent = True
 
 
@@ -86,14 +86,14 @@ if multiagent:
     high_obs = np.concatenate([high_obs, high_obs_fill])
     # print(high_obs)
     observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-    # action_space_multi = gym.spaces.Box(low=0, high=360, shape=(1,), dtype=np.float32)
-    action_space_multi_discrete = gym.spaces.Discrete(5)
+    action_space_multi = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+    # action_space_multi_discrete = gym.spaces.Discrete(5)
 
 
     class BlueSkyServerMultiAgent(ExternalMultiAgentEnv):
-        def __init__(self, action_space_multi_discrete, observation_space_multi, max_concurrent, env_config):
+        def __init__(self, action_space_multi, observation_space_multi, max_concurrent, env_config):
             ExternalEnv.__init__(
-                self, action_space_multi_discrete,
+                self, action_space_multi,
                 observation_space_multi, max_concurrent)
             self.env_config = env_config
             self.server_port = env_config['server_port']
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     # register_env("srv", lambda _: BlueSkyServer(action_space_single, observation_space_single))
     # register_env("srv", lambda env_config: BlueSkyServerMultiAgent(action_space_multi_discrete, observation_space_multi, max_concurrent, env_config))
     # ModelCatalog.register_custom_model("srv", BlueSkyServerMultiAgent)
-    register_env("srv", lambda env_config: BlueSkyServerMultiAgent(action_space_multi_discrete, observation_space_multi, max_concurrent, env_config))
+    register_env("srv", lambda env_config: BlueSkyServerMultiAgent(action_space_multi, observation_space_multi, max_concurrent, env_config))
     # We use DQN since it supports off-policy actions, but you can choose and
     # configure any agent.
     # dqn = PPOAgent(
@@ -140,6 +140,7 @@ if __name__ == "__main__":
                 'env_config': {'server_port' : 27800},
                 'sample_batch_size' : 100,
                 'train_batch_size' : 6000,
+                'clip_actions': True,
                 # 'env_config': {'nr_nodes': 12},
                 # 'horizon': 500,
                 'batch_mode': 'complete_episodes',
