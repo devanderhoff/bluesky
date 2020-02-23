@@ -3,6 +3,7 @@ import gym
 import numpy as np
 import sys, os
 
+from model import MyModelCentralized
 import ray
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -20,7 +21,7 @@ print(settings.n_neighbours)
 print(settings.n_ac)
 SERVER_ADDRESS = "localhost"
 server_port = 27800
-CHECKPOINT_FILE = "agsg.out"
+CHECKPOINT_FILE = "afsaga.out"
 multiagent = True
 
 
@@ -107,7 +108,11 @@ if multiagent:
             server.serve_forever()
 
 if __name__ == "__main__":
+
     ray.init()
+
+    ModelCatalog.register_custom_model("Centralized", MyModelCentralized)
+
     max_concurrent = 100
     # register_env("srv", lambda _: BlueSkyServer(action_space_single, observation_space_single))
     # register_env("srv", lambda env_config: BlueSkyServerMultiAgent(action_space_multi_discrete, observation_space_multi, max_concurrent, env_config))
@@ -130,6 +135,8 @@ if __name__ == "__main__":
         trainer = PPOTrainer(
             env="srv",
             config={
+                'model': {"custom_model" : "Centralized",
+                          },
                 # "log_level": "INFO",
                 'num_workers': 0,
                 "vf_share_layers": True,
@@ -146,10 +153,10 @@ if __name__ == "__main__":
                 'batch_mode': 'complete_episodes',
                 'observation_filter': 'MeanStdFilter',
                 'num_gpus':1,
-                'model': {
-                     'fcnet_hiddens': [256, 256],
+                # 'model': {
+                #      'fcnet_hiddens': [256, 256],
                      # "use_lstm": True
-                 },
+                 # },
                 # 'sample_batch_size': 5000,
                 # 'train_batch_size': 80000,
                 # 'vf_clip_param': 50

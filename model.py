@@ -22,6 +22,7 @@ class MyModelCentralized(TFModelV2):
         # Create policy network
         input_shape_policy = model_config.get("policy_input_size")
         input_policy = tf.keras.layers.Input(shape=(input_shape_policy, ), name="input_policy")
+        print(activation)
         policy_layer_1 = tf.keras.layers.Dense(hiddensize,
                                                name="policy_layer_1",
                                                activation=activation,
@@ -32,7 +33,7 @@ class MyModelCentralized(TFModelV2):
                                                kernel_initializer=normc_initializer(1.0))(policy_layer_1)
         policy_layer_out = tf.keras.layers.Dense(num_outputs,
                                                  name="policy_layer_out",
-                                                 activation=None,
+                                                 activation=tf.keras.activations.linear,
                                                  kernel_initializer=normc_initializer(0.1))(policy_layer_2)
 
         self.policy_model = tf.keras.Model(inputs=input_policy, outpust=policy_layer_out)
@@ -51,7 +52,7 @@ class MyModelCentralized(TFModelV2):
                                             kernel_initializer=normc_initializer(1.0))(central_vf_1)
         central_vf_out = tf.keras.layers.Dense(1,
                                                name="central_vf_out",
-                                               activation=None,
+                                               activation=tf.keras.activations.linear,
                                                kernel_initializer=normc_initializer(0.01))(central_vf_2)
         self.central_vf = tf.keras.Model(
             inputs=obs_centralized, outputs=central_vf_out)
@@ -63,7 +64,11 @@ class MyModelCentralized(TFModelV2):
 
     def forward(self, input_dict, state, seq_lens):
         policy_out = self.policy_model(input_dict['obs'])
+        self._value_out = self.central_vf(input_dict['obs'])
         return policy_out, state
+
+    def value_function(self):
+        return self._value_out
 
     def central_value_function(self, obs_centralized):
         return tf.reshape(
