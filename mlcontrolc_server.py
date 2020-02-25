@@ -135,7 +135,7 @@ if __name__ == "__main__":
         trainer = PPOTrainer(
             env="srv",
             config={
-                'model': {"custom_model" : "Centralized",
+                'model': {"custom_model": "Centralized",
                           },
                 # "log_level": "INFO",
                 'num_workers': 0,

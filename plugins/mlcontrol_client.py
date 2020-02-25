@@ -8,6 +8,8 @@ from bluesky.traffic import autopilot
 from gym import spaces
 from ray.rllib.utils.policy_client import PolicyClient
 
+
+
 settings.set_variable_defaults(n_ac=1, training_enabled=True, acspd=250, nr_nodes=4, min_lat = 51 , max_lat = 54, min_lon =2 , max_lon = 8, n_neighbours=2 )
 print(settings.n_ac)
 client_mc = None
