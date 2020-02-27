@@ -1,21 +1,29 @@
 from config_ml import Config
-
-test = {'n_ac': 3,
+import pickle
+test = {'save_file_name': 'test',
+        'n_ac': 5,
         'training_enabled': True,
-        'n_neighbours': 5,
+        'n_neighbours': 3,
         'min_lat': 20,
         'max_lat': 50,
-        'min_lon':20,
-        'max_lon':50
+        'min_lon': 20,
+        'max_lon': 50
         }
 
 settings = Config()
 # print(settings.n_ac)
 # settings.check()
 settings.set_val(test)
+settings.save_conf()
 # print(settings.n_ac)
 # settings.check()
+settings2 = Config()
+settings2 = settings.load_conf('test')
 
+
+
+# settings2 = Config()
+# settings2 = settings2.load_conf('test')
 
 # # from bluesky_env_ray import BlueSkyEnv
 # #
