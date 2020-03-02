@@ -103,6 +103,7 @@ def update():
         if settings.multiagent:
             obs = calc_state()
         else:
+            print('Singleagent')
             obs = calc_state_single()
 
 
@@ -117,17 +118,21 @@ def update():
                 delete_dict[agent_id] = True
 
         idx_mc += 1
-        client_mc.log_returns(eid, reward, done, info=[])
+
         if idx_mc == settings.max_timesteps or done_count == settings.n_ac:
             for agent_id in done.keys():
                 if not done[agent_id]:
                     final_obs[agent_id] = obs[agent_id]
 
+            done['__all__'] = True
+            client_mc.log_returns(eid, reward, done, info=[])
             print('total reward', reward)
             print('Done with Episode: ', eid)
             client_mc.end_episode(eid, final_obs)
             sim.reset()
+            return
 
+        client_mc.log_returns(eid, reward, done, info=[])
 
 def preupdate():
     global obs, reset_bool, connected, prev_obs, first_time, final_obs, done, delete_dict, obs_first
@@ -139,8 +144,11 @@ def preupdate():
             final_obs = dict.fromkeys(traf.id)
             obs_first = dict.fromkeys(traf.id, None)
             first_time = False
-        # obs = calc_state()
-        obs = calc_state_single()
+        if settings.multiagent:
+            obs = calc_state()
+        else:
+            obs = calc_state_single()
+
         action = client_mc.get_action(eid, obs)
 
         for idx_mc, action in action.items():
@@ -158,9 +166,11 @@ def preupdate():
             # else:
             #     action_hdg = 25
             ## ##
+            print(action)
             action_temp = round(action[0] * 180)
             action_tot = (obs[idx_mc][2] + action_temp) % 360
             traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+            print(action_tot)
 
         # print(action)
         # action_tot = obs[idx_mc][2] + action
@@ -174,6 +184,7 @@ def preupdate():
 
 def reset():
     global reward, idx_mc, eid, reset_bool, connected, first_time
+    # if connected:
     reward = 0
     idx_mc = 0
     reset_bool = True
@@ -221,6 +232,7 @@ def calc_state():
     n_ac_neighbours = np.size(dist, axis=1) - 1
     n_ac_current = np.size(dist, axis=0)
 
+    ##TODO ADD 0 CHECK
     dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
     qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
 
@@ -338,7 +350,7 @@ def calc_reward():
             reward[agent_id] += -200
 
         # Implement reward shaping:
-        F = settings.gamma * (10 / obs[agent_id][3]) - 10 / prev_obs[agent_id][3]
+        F = settings.gamma * (10 / obs[agent_id][3]) - (10 / prev_obs[agent_id][3])
 
         # Final reward
         reward[agent_id] += F

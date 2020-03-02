@@ -12,10 +12,11 @@ from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 
 ##Config dict
-config = {'save_file_name': 'config_file',
-'checkpoint_file_name': 'asdf.out',
+config = {'save_file_name': 'config_file1',
+'checkpoint_file_name': 'testrun5.out',
           'training_enabled': True,
           'multiagent': True,
           'server_port': 27800,
@@ -109,6 +110,8 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("Centralized", MyModelCentralized)
+    # ModelCatalog.register_custom_action_dist("SquashedGaussian", SquashedGaussian)
+
 
     if settings.multiagent:
         # Standard S0
@@ -160,22 +163,25 @@ if __name__ == "__main__":
             env="srv",
             config={
                 'model': {"custom_model": "Centralized",
+                          # 'custom_action_dist': 'SquashedGaussian'
                           },
+                # 'model': {'custom_action_dist': 'SquashedGaussian',
+                #           },
                 # "log_level": "INFO",
                 'num_workers': 0,
-                "vf_share_layers": True,
-                "vf_loss_coeff" : 1e-6,
+                # "vf_share_layers": True,
+                # "vf_loss_coeff" : 1e-6,
                 # 'ignore_worker_failures': True,
                 # 'num_cpus_per_worker':16,
                 'num_envs_per_worker': 1,
                 'env_config': {'server_port' : 27800},
                 'sample_batch_size' : 100,
-                'train_batch_size' : 6000,
-                'clip_actions': True,
+                'train_batch_size' : 12000,
+                # 'clip_actions': True,
                 # 'env_config': {'nr_nodes': 12},
                 # 'horizon': 500,
                 'batch_mode': 'complete_episodes',
-                'observation_filter': 'MeanStdFilter',
+                # 'observation_filter': 'MeanStdFilter',
                 'num_gpus':1,
                 'gamma': settings.gamma,
                 # 'model': {
@@ -185,6 +191,7 @@ if __name__ == "__main__":
                 # 'sample_batch_size': 5000,
                 # 'train_batch_size': 80000,
                 # 'vf_clip_param': 50
+                 'use_gae': True
 
 
             })
