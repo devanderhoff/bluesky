@@ -17,7 +17,11 @@ class MyModelCentralized(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         super(MyModelCentralized, self).__init__(obs_space, action_space, num_outputs, model_config, name)
 
-        activation = get_activation_fn(model_config.get("fcnet_activation"))
+        # activation = 'tanh'
+        activation = 'relu'
+        activation_value = 'tanh'
+
+        # activation = get_activation_fn(model_config.get("fcnet_activation"))
 
         # Create policy network
         # input_shape_policy = model_config.get("policy_input_size")
@@ -32,8 +36,8 @@ class MyModelCentralized(TFModelV2):
                                                kernel_initializer=normc_initializer(1.0))(policy_layer_1)
         policy_layer_out = tf.keras.layers.Dense(num_outputs,
                                                  name="policy_layer_out",
-                                                 activation=tf.keras.activations.linear,
-                                                 kernel_initializer=normc_initializer(0.1))(policy_layer_2)
+                                                 activation=activation,
+                                                 kernel_initializer=tf.constant_initializer(value=0))(policy_layer_2)
 
         self.policy_model = tf.keras.Model(inputs=input_policy, outputs=policy_layer_out)
         self.register_variables(self.policy_model.variables)
@@ -43,11 +47,11 @@ class MyModelCentralized(TFModelV2):
         obs_centralized = tf.keras.layers.Input(shape=obs_space.shape, name="obs_centralized")
         central_vf_1 = tf.keras.layers.Dense(hiddensize,
                                             name="central_vf_1",
-                                            activation=activation,
+                                            activation=activation_value,
                                             kernel_initializer=normc_initializer(1.0))(obs_centralized)
         central_vf_2 = tf.keras.layers.Dense(hiddensize,
                                             name="central_vf_2",
-                                            activation=activation,
+                                            activation=activation_value,
                                             kernel_initializer=normc_initializer(1.0))(central_vf_1)
         central_vf_out = tf.keras.layers.Dense(1,
                                                name="central_vf_out",
@@ -63,6 +67,7 @@ class MyModelCentralized(TFModelV2):
 
     def forward(self, input_dict, state, seq_lens):
         policy_out = self.policy_model(input_dict['obs'])
+        print(policy_out)
         self._value_out = tf.reshape(self.central_vf(input_dict['obs']), [-1])
         return policy_out, state
 

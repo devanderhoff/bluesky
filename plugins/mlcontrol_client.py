@@ -144,6 +144,7 @@ def preupdate():
             final_obs = dict.fromkeys(traf.id)
             obs_first = dict.fromkeys(traf.id, None)
             first_time = False
+
         if settings.multiagent:
             obs = calc_state()
         else:
@@ -170,7 +171,7 @@ def preupdate():
             action_temp = round(action[0] * 180)
             action_tot = (obs[idx_mc][2] + action_temp) % 360
             traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
-            print(action_tot)
+            # print(action_tot)
 
         # print(action)
         # action_tot = obs[idx_mc][2] + action
@@ -194,7 +195,7 @@ def reset():
     print('Resetting with env ID:  ', eid)
     sim.op()
     # traf.trails.setTrails
-    sim.fastforward()
+    # sim.fastforward()
 
 
 def ml_reset(port):
@@ -232,22 +233,22 @@ def calc_state():
     n_ac_neighbours = np.size(dist, axis=1) - 1
     n_ac_current = np.size(dist, axis=0)
 
-    ##TODO ADD 0 CHECK
-    dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
-    qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
+    if not n_ac_neighbours <= 0:
+        dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
+        qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
 
-    if n_ac_neighbours < settings.n_neighbours:
-        nr_fill = settings.n_neighbours - n_ac_neighbours
-        fill_mask_dist = np.full((n_ac_current, 1), settings.max_dist)
-        fill_mask_qdr = np.full((n_ac_current, 1), 180)
-        fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr], axis=1)
-        comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(n_ac_neighbours)])
-        for i in range(nr_fill):
-            comb_ac = np.hstack((comb_ac, fill_mask))
-    else:
-        comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(settings.n_neighbours)])
+        if n_ac_neighbours < settings.n_neighbours:
+            nr_fill = settings.n_neighbours - n_ac_neighbours
+            fill_mask_dist = np.full((n_ac_current, 1), settings.max_dist)
+            fill_mask_qdr = np.full((n_ac_current, 1), 180)
+            fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr], axis=1)
+            comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(n_ac_neighbours)])
+            for i in range(nr_fill):
+                comb_ac = np.hstack((comb_ac, fill_mask))
+        else:
+            comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(settings.n_neighbours)])
 
-    obs_matrix_first = np.concatenate([obs_matrix_first, comb_ac], axis=1)
+        obs_matrix_first = np.concatenate([obs_matrix_first, comb_ac], axis=1)
     obs_c = dict(zip(traf.id, obs_matrix_first))
 
     return obs_c

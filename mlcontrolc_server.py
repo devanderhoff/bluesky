@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import sys, os
 from config_ml import Config
-
+from action_dist import BetaDistribution
 from model import MyModelCentralized
 import ray
 from ray.rllib.env.external_env import ExternalEnv
@@ -12,11 +12,11 @@ from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
+# from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 
 ##Config dict
 config = {'save_file_name': 'config_file1',
-'checkpoint_file_name': 'testrun5.out',
+'checkpoint_file_name': 'testr2.out',
           'training_enabled': True,
           'multiagent': True,
           'server_port': 27800,
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("Centralized", MyModelCentralized)
-    # ModelCatalog.register_custom_action_dist("SquashedGaussian", SquashedGaussian)
+    ModelCatalog.register_custom_action_dist("BetaDistribution", BetaDistribution)
 
 
     if settings.multiagent:
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         low_obs = np.concatenate([low_obs, fill_low_obs])
         high_obs = np.concatenate([high_obs, high_obs_fill])
         observation_space_multi = gym.spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-        action_space_multi = gym.spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+        action_space_multi = gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
         # action_space_multi_discrete = gym.spaces.Discrete(5)
 
     # register_env("srv", lambda _: BlueSkyServer(action_space_single, observation_space_single))
@@ -163,7 +163,7 @@ if __name__ == "__main__":
             env="srv",
             config={
                 'model': {"custom_model": "Centralized",
-                          # 'custom_action_dist': 'SquashedGaussian'
+                          'custom_action_dist': 'BetaDistribution'
                           },
                 # 'model': {'custom_action_dist': 'SquashedGaussian',
                 #           },
@@ -184,6 +184,7 @@ if __name__ == "__main__":
                 # 'observation_filter': 'MeanStdFilter',
                 'num_gpus':1,
                 'gamma': settings.gamma,
+                'eager':True,
                 # 'model': {
                 #      'fcnet_hiddens': [256, 256],
                      # "use_lstm": True
@@ -192,6 +193,7 @@ if __name__ == "__main__":
                 # 'train_batch_size': 80000,
                 # 'vf_clip_param': 50
                  'use_gae': True
+                # 'explore': False
 
 
             })
