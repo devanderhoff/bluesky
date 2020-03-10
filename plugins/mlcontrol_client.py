@@ -167,9 +167,15 @@ def preupdate():
             # else:
             #     action_hdg = 25
             ## ##
-            print(action)
-            action_temp = round(action[0] * 180)
-            action_tot = (obs[idx_mc][2] + action_temp) % 360
+            # print(action)
+            if False:
+                action_temp = round(action[0] * 180)
+                action_tot = (obs[idx_mc][2] + action_temp) % 360
+            elif True:
+                action_temp = round((action[0] * 120)) - 60
+                action_tot = (obs[idx_mc][2] + action_temp) % 360
+            else:
+                pass
             traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
             # print(action_tot)
 
@@ -195,7 +201,7 @@ def reset():
     print('Resetting with env ID:  ', eid)
     sim.op()
     # traf.trails.setTrails
-    # sim.fastforward()
+    sim.fastforward()
 
 
 def ml_reset(port):

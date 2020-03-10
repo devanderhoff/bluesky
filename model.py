@@ -18,7 +18,7 @@ class MyModelCentralized(TFModelV2):
         super(MyModelCentralized, self).__init__(obs_space, action_space, num_outputs, model_config, name)
 
         # activation = 'tanh'
-        activation = 'relu'
+        activation = 'softplus'
         activation_value = 'tanh'
 
         # activation = get_activation_fn(model_config.get("fcnet_activation"))
@@ -37,7 +37,7 @@ class MyModelCentralized(TFModelV2):
         policy_layer_out = tf.keras.layers.Dense(num_outputs,
                                                  name="policy_layer_out",
                                                  activation=activation,
-                                                 kernel_initializer=tf.constant_initializer(value=0))(policy_layer_2)
+                                                 kernel_initializer=normc_initializer(1.0))(policy_layer_2)
 
         self.policy_model = tf.keras.Model(inputs=input_policy, outputs=policy_layer_out)
         self.register_variables(self.policy_model.variables)
@@ -67,7 +67,7 @@ class MyModelCentralized(TFModelV2):
 
     def forward(self, input_dict, state, seq_lens):
         policy_out = self.policy_model(input_dict['obs'])
-        print(policy_out)
+        # print(policy_out)
         self._value_out = tf.reshape(self.central_vf(input_dict['obs']), [-1])
         return policy_out, state
 

@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import sys, os
 from config_ml import Config
-from action_dist import BetaDistribution
+from action_dist import BetaDistributionAction
 from model import MyModelCentralized
 import ray
 from ray.rllib.env.external_env import ExternalEnv
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("Centralized", MyModelCentralized)
-    ModelCatalog.register_custom_action_dist("BetaDistribution", BetaDistribution)
+    ModelCatalog.register_custom_action_dist("BetaDistributionAction", BetaDistributionAction)
 
 
     if settings.multiagent:
@@ -163,7 +163,7 @@ if __name__ == "__main__":
             env="srv",
             config={
                 'model': {"custom_model": "Centralized",
-                          'custom_action_dist': 'BetaDistribution'
+                          'custom_action_dist': 'BetaDistributionAction'
                           },
                 # 'model': {'custom_action_dist': 'SquashedGaussian',
                 #           },
@@ -180,7 +180,7 @@ if __name__ == "__main__":
                 # 'clip_actions': True,
                 # 'env_config': {'nr_nodes': 12},
                 # 'horizon': 500,
-                'batch_mode': 'complete_episodes',
+                # 'batch_mode': 'complete_episodes',
                 # 'observation_filter': 'MeanStdFilter',
                 'num_gpus':1,
                 'gamma': settings.gamma,
@@ -192,16 +192,16 @@ if __name__ == "__main__":
                 # 'sample_batch_size': 5000,
                 # 'train_batch_size': 80000,
                 # 'vf_clip_param': 50
-                 'use_gae': True
-                # 'explore': False
+                 'use_gae': True,
+                 'explore': False
 
 
             })
-        # Attempt to restore from checkpoint if possible.
-        if os.path.exists(settings.checkpoint_file_name):
-            checkpoint_path = open(settings.checkpoint_file_name).read()
-            print("Restoring from checkpoint path", checkpoint_path)
-            trainer.restore(checkpoint_path)
+        # # Attempt to restore from checkpoint if possible.
+        # if os.path.exists(settings.checkpoint_file_name):
+        #     checkpoint_path = open(settings.checkpoint_file_name).read()
+        #     print("Restoring from checkpoint path", checkpoint_path)
+        #     trainer.restore(checkpoint_path)
 
         # Serving and training loop
         while True:
