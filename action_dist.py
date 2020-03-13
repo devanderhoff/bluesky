@@ -8,10 +8,17 @@ tfp = try_import_tfp()
 class BetaDistributionAction(TFActionDistribution):
 
     def __init__(self, inputs, model):
+        # print('input :', inputs)
         alpha, beta = tf.split(inputs, 2, axis=1)
         self.epsilon = tf.constant(1e-7)
-        self.alpha = tf.clip_by_value(alpha, 1.0, tf.float32.max)
-        self.beta = tf.clip_by_value(alpha, 1.0, tf.float32.max)
+        # self.alpha = tf.clip_by_value(alpha, 1.0, tf.float32.max)
+        # self.beta = tf.clip_by_value(beta, 1.0, tf.float32.max)
+        # print('Alpha :', self.alpha, 'Beta :', self.beta)
+        # print('input:', alpha)
+        self.alpha = tf.math.maximum(1.0, alpha)
+        self.beta = tf.math.maximum(1.0, beta)
+        # print('limited :', self.alpha)
+
         self.dist = tfp.distributions.Beta(concentration1=self.alpha, concentration0=self.beta, validate_args=True, allow_nan_stats=False)
         super().__init__(inputs, model)
 
@@ -20,19 +27,21 @@ class BetaDistributionAction(TFActionDistribution):
         return self.dist.mean()
 
     def logp(self, x):
-        # print(x)
         x = tf.clip_by_value(x, self.epsilon, 1-self.epsilon)
         test = -tf.reduce_sum(self.dist.log_prob(x), axis=1)
         # print('logp :', test)
         return test
 
     def kl(self, other):
-        return tf.reduce_sum(self.dist.kl_divergence(other.dist), axis=1)
+        # print('kl :',self.dist.kl_divergence(other.dist))
+        return self.dist.kl_divergence(other.dist)
 
     def entropy(self):
-        return tf.reduce_sum(self.dist.entropy(), axis=1)
+        # print('entropy :', self.dist.entropy())
+        return self.dist.entropy()
 
     def _build_sample_op(self):
+        # print('sample :', self.dist.sample())
         return self.dist.sample()
 
     @staticmethod

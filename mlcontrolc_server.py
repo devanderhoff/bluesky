@@ -15,12 +15,12 @@ from ray.rllib.models import ModelCatalog
 # from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 
 ##Config dict
-config = {'save_file_name': 'config_file1',
-'checkpoint_file_name': 'testr2.out',
+config = {'save_file_name': 'config_file',
+            'checkpoint_file_name': 'woensdag2_relu.out',
           'training_enabled': True,
           'multiagent': True,
           'server_port': 27800,
-        'max_timesteps': 500,
+            'max_timesteps': 500,
           'n_ac': 3,
           'n_neighbours': 3,
           'min_lat': 20,
@@ -36,8 +36,8 @@ config = {'save_file_name': 'config_file1',
           'max_concurrent': 100,
           'lat_eham': 52.19,
           'lon_eham': 4.42,
-          'wpt_reached': 5,
-          'los': 2.5,
+          'wpt_reached': 10,
+          'los': 5,
           'gamma':0.99
 
 
@@ -167,7 +167,7 @@ if __name__ == "__main__":
                           },
                 # 'model': {'custom_action_dist': 'SquashedGaussian',
                 #           },
-                # "log_level": "INFO",
+                "log_level": "DEBUG",
                 'num_workers': 0,
                 # "vf_share_layers": True,
                 # "vf_loss_coeff" : 1e-6,
@@ -175,16 +175,17 @@ if __name__ == "__main__":
                 # 'num_cpus_per_worker':16,
                 'num_envs_per_worker': 1,
                 'env_config': {'server_port' : 27800},
-                'sample_batch_size' : 100,
+                'sample_batch_size' : 600,
                 'train_batch_size' : 12000,
                 # 'clip_actions': True,
                 # 'env_config': {'nr_nodes': 12},
                 # 'horizon': 500,
-                # 'batch_mode': 'complete_episodes',
+                'batch_mode': 'complete_episodes',
                 # 'observation_filter': 'MeanStdFilter',
                 'num_gpus':1,
                 'gamma': settings.gamma,
-                'eager':True,
+                # 'eager':True,
+                # 'eager_tracing':True,
                 # 'model': {
                 #      'fcnet_hiddens': [256, 256],
                      # "use_lstm": True
@@ -193,15 +194,22 @@ if __name__ == "__main__":
                 # 'train_batch_size': 80000,
                 # 'vf_clip_param': 50
                  'use_gae': True,
-                 'explore': False
+                # "kl_target": 0.01,
+                # 'kl_coeff':0.4,
+                # 'entropy_coeff': 0.1,
+                # "shuffle_sequences": False,
+                'lr':5e-6,
+                'lambda':settings.gamma
+
+
 
 
             })
-        # # Attempt to restore from checkpoint if possible.
-        # if os.path.exists(settings.checkpoint_file_name):
-        #     checkpoint_path = open(settings.checkpoint_file_name).read()
-        #     print("Restoring from checkpoint path", checkpoint_path)
-        #     trainer.restore(checkpoint_path)
+        # Attempt to restore from checkpoint if possible.
+        if os.path.exists(settings.checkpoint_file_name):
+            checkpoint_path = open(settings.checkpoint_file_name).read()
+            print("Restoring from checkpoint path", checkpoint_path)
+            trainer.restore(checkpoint_path)
 
         # Serving and training loop
         while True:

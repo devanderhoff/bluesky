@@ -49,7 +49,7 @@ def init_plugin():
         # Update interval in seconds. By default, your plugin's update function(s)
         # are called every timestep of the simulation. If your plugin needs less
         # frequent updates provide an update interval.
-        'update_interval': 4,
+        'update_interval': 5,
 
         'update': update,
 
@@ -118,6 +118,7 @@ def update():
                 delete_dict[agent_id] = True
 
         idx_mc += 1
+        client_mc.log_returns(eid, reward, done, info=[])
 
         if idx_mc == settings.max_timesteps or done_count == settings.n_ac:
             for agent_id in done.keys():
@@ -125,14 +126,14 @@ def update():
                     final_obs[agent_id] = obs[agent_id]
 
             done['__all__'] = True
-            client_mc.log_returns(eid, reward, done, info=[])
+            # client_mc.log_returns(eid, reward, done, info=[])
             print('total reward', reward)
             print('Done with Episode: ', eid)
             client_mc.end_episode(eid, final_obs)
             sim.reset()
-            return
+            # return
 
-        client_mc.log_returns(eid, reward, done, info=[])
+        # client_mc.log_returns(eid, reward, done, info=[])
 
 def preupdate():
     global obs, reset_bool, connected, prev_obs, first_time, final_obs, done, delete_dict, obs_first
@@ -152,7 +153,7 @@ def preupdate():
 
         action = client_mc.get_action(eid, obs)
 
-        for idx_mc, action in action.items():
+        for idx_action, action in action.items():
             # print('Action ', str(action[0]), 'at idx_mc ', idx_mc)
             # print('Before action HDG: ' + str(traf.hdg[0]))
             ## DISCRETE ##
@@ -168,21 +169,22 @@ def preupdate():
             #     action_hdg = 25
             ## ##
             # print(action)
-            if False:
-                action_temp = round(action[0] * 180)
-                action_tot = (obs[idx_mc][2] + action_temp) % 360
-            elif True:
-                action_temp = round((action[0] * 120)) - 60
-                action_tot = (obs[idx_mc][2] + action_temp) % 360
-            else:
-                pass
-            traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+            # if False:
+            #     action_temp = round(action[0] * 180)
+            #     action_tot = (obs[idx_action][2] + action_temp) % 360
+            # elif True:
+            action_temp = round((action[0] * 40)) - 20
+            action_tot = (obs[idx_action][2] + action_temp) % 360
+            #     # print('action :', action[0], 'totaal :', action_tot)
+            # else:
+            #     pass
+            traf.ap.selhdgcmd(traf.id2idx(idx_action), action_tot)
             # print(action_tot)
 
         # print(action)
-        # action_tot = obs[idx_mc][2] + action
+        # action_tot = obs[idx_action][2] + action
         # print(action_tot)
-        # traf.ap.selhdgcmd(traf.id2idx(idx_mc), action_tot)
+        # traf.ap.selhdgcmd(traf.id2idx(idx_action), action_tot)
         prev_obs = obs
 
     # stack.stack('HDG ' + traf.id[0] + ' ' + str(action[0]))
@@ -190,10 +192,11 @@ def preupdate():
 
 
 def reset():
-    global reward, idx_mc, eid, reset_bool, connected, first_time
+    global reward, idx_mc, eid, reset_bool, connected, first_time, done_count
     # if connected:
     reward = 0
     idx_mc = 0
+    done_count = 0
     reset_bool = True
     first_time = True
     eid = client_mc.start_episode(training_enabled=settings.training_enabled)
@@ -239,7 +242,7 @@ def calc_state():
     n_ac_neighbours = np.size(dist, axis=1) - 1
     n_ac_current = np.size(dist, axis=0)
 
-    if not n_ac_neighbours <= 0:
+    if n_ac_neighbours > 0:
         dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
         qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
 
@@ -253,8 +256,18 @@ def calc_state():
                 comb_ac = np.hstack((comb_ac, fill_mask))
         else:
             comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(settings.n_neighbours)])
-
         obs_matrix_first = np.concatenate([obs_matrix_first, comb_ac], axis=1)
+
+    elif n_ac_neighbours == 0:
+        nr_fill = settings.n_neighbours - n_ac_neighbours
+        fill_mask_dist = np.full((n_ac_current, 1), settings.max_dist)
+        fill_mask_qdr = np.full((n_ac_current, 1), 180)
+        fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr], axis=1)
+        fill_mask_comb = fill_mask
+        for i in range(nr_fill-1):
+            fill_mask_comb = np.hstack((fill_mask_comb, fill_mask))
+        obs_matrix_first = np.concatenate([obs_matrix_first, fill_mask_comb], axis=1)
+
     obs_c = dict(zip(traf.id, obs_matrix_first))
 
     return obs_c
@@ -344,17 +357,17 @@ def calc_reward():
 
     for agent_id in reward.keys():
         # set initial reward to -1, as for each timestep spend a penalty is introduced.
-        reward[agent_id] = 0
+        reward[agent_id] = -0.1
         done[agent_id] = False
         # First check if goal is reached
         if obs[agent_id][3] <= settings.wpt_reached:
-            reward[agent_id] += 100
+            reward[agent_id] += 400
             done[agent_id] = True
 
         # Check if there are any collisions
         dist_idx = np.arange(5, len(obs[agent_id]) - 1, 2)
         if any(obs[agent_id][dist_idx] <= settings.los):
-            reward[agent_id] += -200
+            reward[agent_id] += -100
 
         # Implement reward shaping:
         F = settings.gamma * (10 / obs[agent_id][3]) - (10 / prev_obs[agent_id][3])

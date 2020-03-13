@@ -18,7 +18,7 @@ class MyModelCentralized(TFModelV2):
         super(MyModelCentralized, self).__init__(obs_space, action_space, num_outputs, model_config, name)
 
         # activation = 'tanh'
-        activation = 'softplus'
+        activation = 'relu'
         activation_value = 'tanh'
 
         # activation = get_activation_fn(model_config.get("fcnet_activation"))
@@ -28,16 +28,13 @@ class MyModelCentralized(TFModelV2):
         input_policy = tf.keras.layers.Input(shape=obs_space.shape, name="input_policy")
         policy_layer_1 = tf.keras.layers.Dense(hiddensize,
                                                name="policy_layer_1",
-                                               activation=activation,
-                                               kernel_initializer=normc_initializer(1.0))(input_policy)
+                                               activation=activation)(input_policy)
         policy_layer_2 = tf.keras.layers.Dense(hiddensize,
                                                name='policy_layer_2',
-                                               activation=activation,
-                                               kernel_initializer=normc_initializer(1.0))(policy_layer_1)
+                                               activation=activation)(policy_layer_1)
         policy_layer_out = tf.keras.layers.Dense(num_outputs,
                                                  name="policy_layer_out",
-                                                 activation=activation,
-                                                 kernel_initializer=normc_initializer(1.0))(policy_layer_2)
+                                                 activation=activation)(policy_layer_2)
 
         self.policy_model = tf.keras.Model(inputs=input_policy, outputs=policy_layer_out)
         self.register_variables(self.policy_model.variables)
