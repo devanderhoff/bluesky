@@ -4,6 +4,8 @@
 from bluesky import stack, settings, navdb, traf, sim, scr, tools
 import numpy as np
 
+import ExternalEnv
+
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
 def init_plugin():

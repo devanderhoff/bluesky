@@ -12,13 +12,15 @@ from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 hiddensize = 256
+bias_initializer = tf.keras.initializers.Zeros()
+
 
 class MyModelCentralized(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         super(MyModelCentralized, self).__init__(obs_space, action_space, num_outputs, model_config, name)
 
-        # activation = 'tanh'
-        activation = 'relu'
+        activation = 'tanh'
+        # activation = 'relu'
         activation_value = 'tanh'
 
         # activation = get_activation_fn(model_config.get("fcnet_activation"))
@@ -28,13 +30,19 @@ class MyModelCentralized(TFModelV2):
         input_policy = tf.keras.layers.Input(shape=obs_space.shape, name="input_policy")
         policy_layer_1 = tf.keras.layers.Dense(hiddensize,
                                                name="policy_layer_1",
+                                               bias_initializer=bias_initializer,
+                                               kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
                                                activation=activation)(input_policy)
         policy_layer_2 = tf.keras.layers.Dense(hiddensize,
                                                name='policy_layer_2',
+                                               bias_initializer=bias_initializer,
+                                               kernel_initializer=tf.keras.initializers.Orthogonal(gain=1.0),
                                                activation=activation)(policy_layer_1)
         policy_layer_out = tf.keras.layers.Dense(num_outputs,
                                                  name="policy_layer_out",
-                                                 activation=activation)(policy_layer_2)
+                                                 activation=activation,
+                                                 bias_initializer=bias_initializer,
+                                                 kernel_initializer=normc_initializer(0.01))(policy_layer_2)
 
         self.policy_model = tf.keras.Model(inputs=input_policy, outputs=policy_layer_out)
         self.register_variables(self.policy_model.variables)
@@ -71,6 +79,9 @@ class MyModelCentralized(TFModelV2):
     def value_function(self):
         return self._value_out
 
-    def central_value_function(self, obs_centralized):
+    def central_value_function(self, obs, opponent_obs, opponent_actions):
         return tf.reshape(
-            self.central_vf(obs_centralized), [-1])
+            self.central_vf(
+                [obs, opponent_obs,
+                 tf.one_hot(opponent_actions, 2)]), [-1])
+
