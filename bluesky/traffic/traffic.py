@@ -82,6 +82,7 @@ class Traffic(TrafficArrays):
             # Aircraft Info
             self.id      = []  # identifier (string)
             self.type    = []  # aircaft type (string)
+            self.dest_temp = np.array([], dtype=np.int32)
 
             # Positions
             self.lat     = np.array([])  # latitude [deg]
@@ -254,6 +255,7 @@ class Traffic(TrafficArrays):
         # Aircraft Info
         self.id[-n:]   = acid
         self.type[-n:] = actype
+        self.dest_temp[-n:] = dest
 
         # Positions
         self.lat[-n:]  = aclat

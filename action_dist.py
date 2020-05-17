@@ -134,7 +134,7 @@ class CategoricalOrdinalTFP(TFActionDistribution):
         inputs = tf.reduce_sum(tf.math.log(inputs + 1e-8) * am_tf + tf.math.log(1 - inputs + 1e-8) * (1 - am_tf),
                                 axis=-1)
 
-        self.dist = tfp.distributions.Categorical(logits=inputs)
+        self.dist = tfp.distributions.Categorical(logits=inputs, dtype=tf.int64)
         super().__init__(inputs, model)
 
     def deterministic_sample(self):

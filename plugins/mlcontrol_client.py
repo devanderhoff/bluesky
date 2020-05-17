@@ -1,6 +1,6 @@
 """ External control plugin for Machine Learning applications. """
 # Import the global bluesky objects. Uncomment the ones you need
-from bluesky import stack, sim, traf, tools  # , net #, navdb, traf, sim, scr, tools
+from bluesky import stack, sim, traf, tools, navdb  # , net #, navdb, traf, sim, scr, tools
 import numpy as np
 import collections
 import time
@@ -10,14 +10,33 @@ from ray.rllib.env.policy_client import PolicyClient
 from config_ml import Config
 from action_dist import BetaDistributionAction, CategoricalOrdinal, CategoricalOrdinalTFP
 from model import MyModelCentralized
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.models import ModelCatalog
+# from Centralized import centralized_critic_postprocessing, loss_with_central_critic, setup_mixins, central_vf_stats,\
+#     LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin, CentralizedValueMixin
+import Centralized
 
 ModelCatalog.register_custom_action_dist("CategoricalOrdinalTFP", CategoricalOrdinalTFP)
 ModelCatalog.register_custom_model("Centralized", MyModelCentralized)
 
+# CCPPO = PPOTFPolicy.with_updates(
+#     name="CCPPO",
+#     postprocess_fn=centralized_critic_postprocessing,
+#     loss_fn=loss_with_central_critic,
+#     before_loss_init=setup_mixins,
+#     grad_stats_fn=central_vf_stats,
+#     mixins=[
+#         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+#         CentralizedValueMixin
+#     ])
+#
+# CCTrainer = PPOTrainer.with_updates(name="CCPPOTrainer", default_policy=CCPPO)
+
 settings = Config()
 settings = settings.load_conf('config_file')
 
+destination = None
 client_mc = None
 reward = None
 idx_mc = None
@@ -91,7 +110,7 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count, final_obs, done, delete_dict
+    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count, final_obs, done, delete_dict, dest_idx
     if connected:
         # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has
         # occured or not. Then create environment agents.
@@ -101,9 +120,10 @@ def update():
             aclon = np.random.rand(settings.n_ac) * (settings.max_lon_gen - settings.min_lon_gen) + settings.min_lon_gen
             achdg = np.random.randint(1, 360, settings.n_ac)
             acalt = np.ones(settings.n_ac) * 7620
+            dest_idx = np.random.randint(3, size=settings.n_ac) + 1
             print('Created ', str(settings.n_ac), ' random aircraft, resetted!')
             traf.create(n=settings.n_ac, aclat=aclat, aclon=aclon, achdg=achdg,  # 360 * np.random.rand(1)
-                        acspd=150, acalt=acalt, actype='B777')  # settings.acspd)
+                        acspd=150, acalt=acalt, actype='B777', dest=dest_idx)  # settings.acspd)
             reset_bool = False
             return
 
@@ -132,7 +152,7 @@ def update():
         #     done['__all__'] = True'
 
         # Return observations and rewards
-        client_mc.log_returns(eid, reward, done, info=[])
+        client_mc.log_returns(eid, reward, info, done)
 
         # Check if episode is done either by horizon or all a/c landed, but more likely crashed into each other.
         if idx_mc == settings.max_timesteps or done_count == settings.n_ac:
@@ -150,7 +170,7 @@ def update():
         # client_mc.log_returns(eid, reward, done, info=[])
 
 def preupdate():
-    global obs, reset_bool, connected, prev_obs, first_time, final_obs, done, delete_dict, obs_first
+    global obs, reset_bool, connected, prev_obs, first_time, final_obs, done, delete_dict, obs_first, dest_idx
     if connected:
 
         if first_time:
@@ -251,16 +271,32 @@ def calc_state():
     # latlong eham
     # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
 
+    # Determine lat long for destination set
+    # -3 = EHAM
+    # -2 = EHEH
+    # -1 = EHDL
+    dest_idx_list = [navdb.getaptidx('EHAM'), navdb.getaptidx('EHEH'), navdb.getaptidx('EHDL')]
+    lat_dest_list = navdb.aptlat[dest_idx_list]
+    lon_dest_list = navdb.aptlon[dest_idx_list]
+
+
+
     # Retrieve latitude and longitude, and add destination lat/long to the end of the list for distance
     # and qdr calculation.
 
-    lat_list = np.append(traf.lat, lat_eham)
-    lon_list = np.append(traf.lon, lon_eham)
+    # lat_list = np.append(traf.lat, lat_eham)
+    # lon_list = np.append(traf.lon, lon_eham)
+    lat_list = np.append(traf.lat, lat_dest_list)
+    lon_list = np.append(traf.lon, lon_dest_list)
     traf_id_list = np.tile(traf.id, (len(traf.lon), 1))
+
 
     qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list),
                                              np.asmatrix(lon_list))
     qdr = degto180(qdr)
+
+    traf_idx = np.arange(len(traf.id))
+    dist_destination = dist[traf_idx, -traf.dest_temp]
 
     # Reshape into; Rows = each aircraft, columns are states.
     obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
@@ -275,6 +311,7 @@ def calc_state():
     dist = np.take_along_axis(dist, sort_idx, axis=1)
     qdr = np.take_along_axis(qdr, sort_idx, axis=1)
     traf_id_list_sort = np.take_along_axis(traf_id_list, sort_idx, axis=1)
+    traf_send_flag = True
 
     # Determine amount of current aircraft and neighbours.
     n_ac_neighbours = np.size(dist, axis=1) - 1
@@ -285,15 +322,15 @@ def calc_state():
         # Split up values to make [dist, qdr] stacks.
         dist = np.split(dist[:, 1:], np.size(dist[:, 1:], axis=1), axis=1)
         qdr = np.split(qdr[:, 1:], np.size(qdr[:, 1:], axis=1), axis=1)
-        traf_id_list_sort = traf_id_list_sort[:, 1:]
+        # traf_id_list_sort = traf_id_list_sort[:, 1:]
 
         # When current number of neighbours is lower than the amount set in settings, fill rest with dummy variables.
         if n_ac_neighbours < settings.n_neighbours:
             nr_fill = settings.n_neighbours - n_ac_neighbours
 
             # Dummy values
-            fill_mask_dist = np.full((n_ac_current, 1), 0) #settings.max_dist
-            fill_mask_qdr = np.full((n_ac_current, 1), 0)
+            fill_mask_dist = np.full((n_ac_current, 1), -1) #settings.max_dist
+            fill_mask_qdr = np.full((n_ac_current, 1), -1)
             fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr], axis=1)
             comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(n_ac_neighbours)])
             for i in range(nr_fill):
@@ -304,7 +341,7 @@ def calc_state():
         elif n_ac_neighbours >= settings.n_neighbours and settings.n_neighbours > 0:
             comb_ac = np.hstack([np.hstack([dist[i], qdr[i]]) for i in range(settings.n_neighbours)])
             n_ac_neighbours_send = settings.n_neighbours
-            traf_id_list_sort = traf_id_list_sort[:, :settings.n_neighbours]
+            traf_id_list_sort = traf_id_list_sort[:, :settings.n_neighbours+1]
         # Combine S0 (lat, long, hdg, wpt dist, hdg dist) with other agent information.
         obs_matrix_first = np.concatenate([obs_matrix_first, comb_ac], axis=1)
 
@@ -312,19 +349,29 @@ def calc_state():
 
         # Dummy values
         nr_fill = settings.n_neighbours
-        fill_mask_dist = np.full((n_ac_current, 1), 0)
-        fill_mask_qdr = np.full((n_ac_current, 1), 0)
+        fill_mask_dist = np.full((n_ac_current, 1), -1)
+        fill_mask_qdr = np.full((n_ac_current, 1), -1)
         fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr], axis=1)
         for i in range(nr_fill):
             obs_matrix_first = np.concatenate([obs_matrix_first, fill_mask], axis=1)
         n_ac_neighbours_send = n_ac_neighbours
-        traf_id_list_sort = np.full((n_ac_current, 1), 0)
+        traf_id_list_sort = []
+        traf_send_flag = False
 
+    if settings.n_neighbours == 0:
+        n_ac_neighbours_send = settings.n_neighbours
+        traf_id_list_sort = []
+        traf_send_flag = False
     # Create final observation dict, with corresponding traffic ID's.
     obs_c = dict(zip(traf.id, obs_matrix_first))
     info = dict.fromkeys(traf.id, {})
-    for idx, keys in enumerate(traf.id):
-        info[keys]['sequence'] = list(traf_id_list_sort[idx])
+    # Remove check later.
+    if traf_send_flag:
+        for idx, keys in enumerate(traf.id):
+            if keys == traf_id_list_sort[idx, 0]:
+                info[keys]= {'sequence': list(traf_id_list_sort[idx])}
+            else:
+                raise ValueError("Info dict is wrongly constructed")
     #
     # info_list = ['sequence'] * len(traf.lon)
     # traf_id_list_c = dict(zip(traf.id, info_list))
@@ -341,8 +388,8 @@ def calc_reward(n_ac_neighbours):
     # This function calculates the "intrensic" reward as well as additional reward shaping
 
     # Constants to determine faulty states:
-    settings.los = 1.05  # nm
-    settings.wpt_reached = 5  # nm
+    # settings.los = 1.05  # nm
+    # settings.wpt_reached = 5  # nm
     settings.gamma = 0.99  # Match with trainer/implement in settings
 
     # Create reward dict depending on obs id's.
