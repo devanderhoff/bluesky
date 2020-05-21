@@ -57,6 +57,7 @@ class Config:
         self.lon_eham = None                # Longitude goal    (to be extended)
         self.wpt_reached = None             # When a A/C is considered to have reached its goal (nm)
         self.los = None                     # When an A/C is considered to have a loss of seperation (nm)
+        self.spawn_separation = None
 
        # Trainer settings
         self.max_timesteps = None           # Max timesteps per episode

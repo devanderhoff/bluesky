@@ -110,14 +110,13 @@ def init_plugin():
 ### this by anything, so long as you communicate this in init_plugin
 
 def update():
-    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count, final_obs, done, delete_dict, dest_idx
+    global reward, idx_mc, reset_bool, connected, obs, prev_obs, done_count, final_obs, done, delete_dict
     if connected:
         # Bluesky first timestep starts with update step, so use the reset_bool to determine wheter a reset has
         # occured or not. Then create environment agents.
         if reset_bool:
             # Randomize starting location depending on boundaries in settings.
-            aclat = np.random.rand(settings.n_ac) * (settings.max_lat_gen - settings.min_lat_gen) + settings.min_lat_gen
-            aclon = np.random.rand(settings.n_ac) * (settings.max_lon_gen - settings.min_lon_gen) + settings.min_lon_gen
+            aclat, aclon = latlon_randomizer(settings)
             achdg = np.random.randint(1, 360, settings.n_ac)
             acalt = np.ones(settings.n_ac) * 7620
             dest_idx = np.random.randint(3, size=settings.n_ac) + 1
@@ -222,7 +221,7 @@ def preupdate():
             # action_temp = round((action[0] * 40)) - 20
             action_temp = action_hdg
             # action_temp = action*20
-            action_tot = (obs[idx_action][2] + action_temp) % 360
+            action_tot = (obs[idx_action][3] + action_temp) % 360
             #     # print('action :', action[0], 'totaal :', action_tot)
             # else:
             #     pass
@@ -269,7 +268,7 @@ def calc_state():
     # traf.hdg
     # traf.id
     # latlong eham
-    # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
+    # multi agents obs: destination ID, lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
 
     # Determine lat long for destination set
     # -3 = EHAM
@@ -297,14 +296,20 @@ def calc_state():
 
     traf_idx = np.arange(len(traf.id))
     dist_destination = dist[traf_idx, -traf.dest_temp]
+    qdr_destination = qdr[traf_idx, -traf.dest_temp]
 
-    # Reshape into; Rows = each aircraft, columns are states.
-    obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
-                                       np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
+    # # Reshape into; Rows = each aircraft, columns are states. OLD
+    # obs_matrix_first = np.concatenate([traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1), traf.hdg.reshape(-1, 1),
+    #                                    np.asarray(dist[:-1, -1]), np.asarray(qdr[:-1, -1])], axis=1)
+
+    # Reshape into; Rows = each aircraft, columns are states
+    obs_matrix_first = np.concatenate([traf.dest_temp.reshape(-1, 1), traf.lat.reshape(-1, 1), traf.lon.reshape(-1, 1),
+                                       traf.hdg.reshape(-1, 1), np.asarray(dist_destination.reshape(-1, 1)),
+                                       np.asarray(qdr_destination.reshape(-1,1))], axis=1)
 
     # Remove last entry, that is distance calculated to destination.
-    dist = np.asarray(dist[:-1, :-1])
-    qdr = np.asarray(qdr[:-1, :-1])
+    dist = np.asarray(dist[:-3, :-3])
+    qdr = np.asarray(qdr[:-3, :-3])
 
     # Sort value's on clostest distance.
     sort_idx = np.argsort(dist, axis=1)
@@ -401,12 +406,12 @@ def calc_reward(n_ac_neighbours):
         done[agent_id] = False
 
         # First check if goal is reached
-        if obs[agent_id][3] <= settings.wpt_reached:
+        if obs[agent_id][4] <= settings.wpt_reached:
             reward[agent_id] += 1
             done[agent_id] = True
 
         # Check if there are any collisions
-        dist_idx = np.arange(5, 5 + n_ac_neighbours*2 - 1, 2) #len(obs[agent_id])
+        dist_idx = np.arange(6, 6 + n_ac_neighbours*2 - 1, 2) #len(obs[agent_id])
         if any(obs[agent_id][dist_idx] <= settings.los):
             reward[agent_id] += -1
             done[agent_id] = True
@@ -419,113 +424,26 @@ def calc_reward(n_ac_neighbours):
 
     return reward, done
 
-
-def calc_reward_single():
-    global obs, prev_obs, done
-    # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
-    ## This function calculates the "intrensic" reward as well as additional reward shaping
-    # Constants to determine faulty states:
-    settings.los = 1.05  # nm
-    settings.wpt_reached = 5  # nm
-    settings.gamma = 0.99  # Match with trainer/implement in settings
-
-    reward = dict.fromkeys(obs.keys())
-
-    for agent_id in reward.keys():
-        # set initial reward to -1, as for each timestep spend a penalty is introduced.
-        reward[agent_id] = 0
-        done[agent_id] = False
-        # First check if goal is reached
-        if obs[agent_id][3] <= settings.wpt_reached:
-            reward[agent_id] += 100
-            done[agent_id] = True
-
-        # Check if there are any collisions
-        dist_idx = np.arange(5, len(obs[agent_id]) - 1, 2)
-        if any(obs[agent_id][dist_idx] <= settings.los):
-            reward[agent_id] += -200
-
-        # Implement reward shaping:
-        F = settings.gamma * (10 / obs[agent_id][3]) - 10 / prev_obs[agent_id][3]
-
-        # Final reward
-        reward[agent_id] += F
-
-    return reward, done
-
 def degto180(angle):
     """Change to domain -180,180 """
     return (angle + 180.) % 360 - 180.
 
-# def calc_state_single():
-#     global relative, obs_first
-#     # Required information:
-#     # traf.lat
-#     # traf.lon
-#     # traf.hdg
-#     # traf.id
-#     # latlong eham
-#     # multi agents obs: lat, long, hdg, dist_wpt, hdg_wpt, dist_plane1, hdg_plane1, dist_plane2, hdg_plane2 (nm/deg)
-#     obs_single = obs_first
-#
-#
-#     if relative:
-#         idx_list = traf.id2idx(traf.id) + np.ones(np.size(traf.id))
-#         idx_list = idx_list.astype(int)
-#         # obs_id_first
-#         if np.size(traf.id) < settings.n_ac:
-#             match_list = np.zeros(np.size(settings.n_ac), dtype=bool)
-#             for id_check in traf.id:
-#                for match_idx, match_id in enumerate(obs_single.keys()):
-#                    if id_check is match_id:
-#                        match_list[match_idx] = True
-#
-#
-#
-#         lat_list = np.append(lat_eham, traf.lat)
-#         lon_list = np.append(lon_eham, traf.lon)
-#
-#         qdr, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(lat_list), np.asmatrix(lon_list), np.asmatrix(lat_list),
-#                                                  np.asmatrix(lon_list))
-#         qdr = np.asarray(qdr)
-#         qdr = degto180(qdr)
-#         dist = np.asarray(dist)
-#
-#         n_ac_current = np.size(dist, axis=0) - 1
-#
-#         for i, trafID in enumerate(traf.id):
-#             # qdr and dist to eham.
-#             qdr_s0 = qdr[0, idx_list[i]]
-#             dist_s0 = dist[0, idx_list[i]]
-#             s0_comb = np.hstack((qdr_s0, dist_s0))
-#
-#             dist_plane = np.hstack((dist[idx_list[i], :idx_list[i]], dist[idx_list[i], idx_list[i]+1:]))
-#             qdr_plane = np.hstack((qdr[idx_list[i], :idx_list[i]], dist[idx_list[i], idx_list[i]+1:]))
-#
-#             dist_plane = np.split(dist_plane, n_ac_current)
-#             qdr_plane = np.split(qdr_plane, n_ac_current)
-#
-#             nr_fill = settings.n_ac - n_ac_current
-#             fill_mask_dist = np.array([settings.max_dist])
-#             fill_mask_qdr = np.array([180])
-#             fill_mask = np.concatenate([fill_mask_dist, fill_mask_qdr])
-#
-#             comb_ac = np.hstack([np.hstack([qdr_plane[i], dist_plane[i]]) for i in range(n_ac_current)])
-#
-#             if nr_fill > 0:
-#                 for _ in range(nr_fill):
-#                     comb_ac = np.hstack((comb_ac, fill_mask))
-#
-#             comb_ac = np.hstack((s0_comb, comb_ac))
-#             obs_single[trafID] = comb_ac
-#
-#         for value, key in enumerate(obs_single):
-#             if value is None:
-#                 fill_mask_dist = np.array([settings.max_dist])
-#                 fill_mask_qdr = np.array([180])
-#                 comb_fill = np.concatenate([fill_mask_dist, fill_mask_qdr])
-#                 for i in range(settings.n_ac):
-#                     comb_fill = np.hstack((comb_fill, comb_fill))
-#                 obs_single[key] = comb_fill
-#         print('loop')
-#     return obs_single
+def latlon_randomizer(settings):
+    done_flag = False
+    iter_n = 0
+    while not done_flag:
+        iter_n += 1
+        aclat = np.random.rand(settings.n_ac) * (settings.max_lat_gen - settings.min_lat_gen) + settings.min_lat_gen
+        aclon = np.random.rand(settings.n_ac) * (settings.max_lon_gen - settings.min_lon_gen) + settings.min_lon_gen
+        _, dist = tools.geo.kwikqdrdist_matrix(np.asmatrix(aclat), np.asmatrix(aclon), np.asmatrix(aclat),
+                                               np.asmatrix(aclon))
+        mask = np.mask_indices(settings.n_ac, np.tril, -1)
+        dist = np.asarray(dist)
+        dist = dist[mask]
+        if all(dist >= settings.spawn_separation) or iter_n >= 1000:
+            done_flag = True
+            if iter_n >= 1000:
+                print("Maximum iterations on aircraft random generation reached, aircraft may spawn to close together")
+                print("Minimum current distance is: ", min(dist))
+    return aclat, aclon
+

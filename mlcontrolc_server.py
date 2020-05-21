@@ -1,8 +1,49 @@
+from config_ml import Config
+"""
+Disable KL-coeff, only use clipping
+Swap to determinisic sampling around 650M steps (misschien)
+Maximize batch size and mini batch size
+Destination airport should be equally divided (np shuffle)
+Make delete dict dynnamic
+Disable NavDB
+
+
+"""
+config = {'save_file_name': 'config_file',
+            'checkpoint_file_name': 'Multi_destination_25ac_5neighbour_hyperparamtest.out',
+          'training_enabled': True,
+          'multiagent': True,
+          'server_port': 27800,
+          'max_timesteps': 1500,
+          'n_ac': 25, #20,
+          'n_neighbours':5, #6,
+          'min_lat': 20,
+          'max_lat': 80,
+          'min_lon': -60,
+          'max_lon': 60,
+          'min_lat_gen':49,#51 , 49
+          'max_lat_gen':56,#54 , 56
+          'min_lon_gen':0,#2 , 0
+          'max_lon_gen':10,#8 , 10
+          'min_dist': -2,
+          'max_dist': 3000,
+          'max_concurrent': 100,
+          'lat_eham': 52.19,
+          'lon_eham': 4.42,
+          'wpt_reached': 5,
+          'los': 8, #10
+          'gamma':0.99,
+          'spawn_separation':30
+          }
+
+settings = Config()
+settings.set_val(config)
+
 import ray
 import gym
 import os
 import numpy as np
-from config_ml import Config
+
 from action_dist import BetaDistributionAction, CategoricalOrdinal, CategoricalOrdinalTFP
 from model import MyModelCentralized
 from ray.rllib.env.external_env import ExternalEnv
@@ -27,36 +68,8 @@ import Centralized
 
 from ray import tune
 # from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
-restore = False
+restore = True
 ##Config dict
-config = {'save_file_name': 'config_file',
-            'checkpoint_file_name': 'Centralized_high_LOS_test_8_new.out',
-          'training_enabled': True,
-          'multiagent': True,
-          'server_port': 27800,
-          'max_timesteps': 1500,
-          'n_ac': 5, #20,
-          'n_neighbours':4, #6,
-          'min_lat': 20,
-          'max_lat': 80,
-          'min_lon': -60,
-          'max_lon': 60,
-          'min_lat_gen':49,#51
-          'max_lat_gen':56,#54
-          'min_lon_gen':0,#2
-          'max_lon_gen':10,#8
-          'min_dist': -2,
-          'max_dist': 3000,
-          'max_concurrent': 100,
-          'lat_eham': 52.19,
-          'lon_eham': 4.42,
-          'wpt_reached': 5,
-          'los': 8, #10
-          'gamma':0.99
-          }
-
-settings = Config()
-settings.set_val(config)
 
 SERVER_ADDRESS = "localhost"
 server_port = 27800
@@ -115,9 +128,9 @@ if __name__ == "__main__":
 
     if settings.multiagent:
         # Standard S0
-        low_obs = np.array([settings.min_lat, settings.min_lon, 0, settings.min_dist, -180])  # -1, 0, -1, 0])
+        low_obs = np.array([0, settings.min_lat, settings.min_lon, 0, settings.min_dist, -180])  # -1, 0, -1, 0])
         high_obs = np.array(
-            [settings.max_lat, settings.max_lon, 360, settings.max_dist, 180])  # , 360, 1000, 360, 1000, 360])
+            [3, settings.max_lat, settings.max_lon, 360, settings.max_dist, 180])  # , 360, 1000, 360, 1000, 360])
 
         fill_low_hdg = np.array([-180])
         fill_low_dist = np.array([settings.min_dist])
@@ -175,21 +188,31 @@ if __name__ == "__main__":
                     "custom_model": "Centralized",
                     'custom_action_dist': 'CategoricalOrdinalTFP'},
                 "input_evaluation": [],
-                "log_level": "DEBUG",
+                "log_level": "INFO",
                 'num_workers': 0,
-                'num_sgd_iter':5,
+                'num_sgd_iter':20,
                 'rollout_fragment_length' : 1000, #600
-                'train_batch_size' : 60000, #12000
-                'sgd_minibatch_size': 500,
+                'train_batch_size' : 120000, #80000
+                'sgd_minibatch_size': 12000,
                 'batch_mode': 'complete_episodes',
                 'num_gpus':1,
                 'gamma': settings.gamma,
                 'eager': False,
                 # 'eager_tracing': True,
                 'use_gae': True,
-                'lr':1e-5,#normally e-6
-                "explore": True,
-                'lambda': settings.gamma,
+                # 'lr':0.001,#normally e-6
+                'lr_schedule':[
+                    [0, 0.001],
+                    [10000000, 0.000001],
+                ],
+                'clip_param': 0.3,
+                'kl_coeff':0.5,
+                'kl_target': 0.03,
+                # 'entropy_coeff': 0.01, #uit later
+
+                "explore": False,
+                'lambda': 0.95,
+                'shuffle_sequences': True
             })
             # config={
             #     'env': 'BlueSkySrv',

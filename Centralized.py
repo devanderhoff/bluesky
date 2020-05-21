@@ -47,7 +47,7 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
                 neighbours_ac = value['sequence'][1:]
                 # print(neighbours_ac)
                 OpponentActions = []
-                idx_insert = np.arange(7, 7 + settings.n_neighbours * 3, 3)
+                idx_insert = np.arange(8, 8 + settings.n_neighbours * 3, 3)
                 # print(idx_insert)
                 # idx_insert = idx_insert[:-1]
                 temp = sample_batch[SampleBatch.CUR_OBS][idx]
@@ -78,8 +78,8 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
             else:
                 # New_obs_list.append(sample_batch[SampleBatch.CUR_OBS][idx])
                 # if len(sample_batch[SampleBatch.CUR_OBS][idx]) < (5 + settings.n_neighbours * 3):
-                fill = (5 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx])
-                fill_zero = np.full((1,fill), -1, dtype=np.float32)
+                fill = (6 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx])
+                fill_zero = np.full((1, fill), -1, dtype=np.float32)
                 temp_2 = np.append(sample_batch[SampleBatch.CUR_OBS][idx], fill_zero)
                 if idx==0:
                     New_obs_array = temp_2
@@ -101,7 +101,7 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
         sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(sample_batch[NEW_OBS_ACTION])
     else:
         # print('past here')
-        fake_size = 5 + settings.n_neighbours*3
+        fake_size = 6 + settings.n_neighbours*3
         sample_batch[NEW_OBS_ACTION] = np.array([])
         sample_batch[NEW_OBS_ACTION] = np.zeros((1, fake_size), dtype=np.float32)
         # print(sample_batch[NEW_OBS_ACTION])
