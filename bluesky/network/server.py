@@ -6,6 +6,7 @@ import sys
 from subprocess import Popen
 import zmq
 import msgpack
+import time
 
 # Local imports
 import bluesky as bs
@@ -138,9 +139,14 @@ class Server(Thread):
 
 
                     if eventname == b'TEST':
-                        print(self.workers)
-
-
+                        # count = msgpack.unpackb(data)
+                        # self.addnodes(count)
+                        # print('continues immediatly')
+                        while self.avail_workers:
+                            worker_id = next(iter(self.avail_workers))
+                            self.be_event.send_multipart([worker_id, self.host_id, b'MLRESET', data])
+                            self.avail_workers.pop(worker_id)
+                            time.sleep(1)
 
                     if eventname == b'REGISTER':
                         # This is a registration message for a new connection

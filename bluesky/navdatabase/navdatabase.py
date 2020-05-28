@@ -37,63 +37,65 @@ class Navdatabase:
 
     Created by  : Jacco M. Hoekstra (TU Delft)
     """
-
     def __init__(self):
         """The navigation database: Contains waypoint, airport, airway, and sector data, but also
            geographical graphics data."""
         # Variables are initialized in reset()
+        self.initialize = False
         self.reset()
 
     def reset(self):
-        print("Loading global navigation database...")
-        wptdata, aptdata, awydata, firdata, codata, rwythresholds = load_navdata()
+        if not self.initialize:
+            self.initialize = True
+            print("Loading global navigation database...")
+            wptdata, aptdata, awydata, firdata, codata, rwythresholds = load_navdata()
 
-        # Get waypoint data
-        self.wpid     = wptdata['wpid']       # identifier (string)
-        self.wplat    = wptdata['wplat']      # latitude [deg]
-        self.wplon    = wptdata['wplon']      # longitude [deg]
-        self.wptype   = wptdata['wptype']     # type (string)
-        self.wpelev   = wptdata['wpelev']     # elevation [m]
-        self.wpvar    = wptdata['wpvar']      # magn variation [deg]
-        self.wpfreq   = wptdata['wpfreq']       # frequency [kHz/MHz]
-        self.wpdesc   = wptdata['wpdesc']     # description
+            # Get waypoint data
+            self.wpid     = wptdata['wpid']       # identifier (string)
+            self.wplat    = wptdata['wplat']      # latitude [deg]
+            self.wplon    = wptdata['wplon']      # longitude [deg]
+            self.wptype   = wptdata['wptype']     # type (string)
+            self.wpelev   = wptdata['wpelev']     # elevation [m]
+            self.wpvar    = wptdata['wpvar']      # magn variation [deg]
+            self.wpfreq   = wptdata['wpfreq']       # frequency [kHz/MHz]
+            self.wpdesc   = wptdata['wpdesc']     # description
 
-        # Get airway legs data
-        self.awfromwpid = awydata['awfromwpid']  # identifier (string)
-        self.awfromlat  = awydata['awfromlat']   # latitude [deg]
-        self.awfromlon  = awydata['awfromlon']   # longitude [deg]
-        self.awtowpid   = awydata['awtowpid']    # identifier (string)
-        self.awtolat    = awydata['awtolat']     # latitude [deg]
-        self.awtolon    = awydata['awtolon']     # longitude [deg]
-        self.awid       = awydata['awid']        # airway identifier (string)
-        self.awndir     = awydata['awndir']      # number of directions (1 or 2)
-        self.awlowfl    = awydata['awlowfl']     # lower flight level (int)
-        self.awupfl     = awydata['awupfl']      # upper flight level (int)
+            # Get airway legs data
+            self.awfromwpid = awydata['awfromwpid']  # identifier (string)
+            self.awfromlat  = awydata['awfromlat']   # latitude [deg]
+            self.awfromlon  = awydata['awfromlon']   # longitude [deg]
+            self.awtowpid   = awydata['awtowpid']    # identifier (string)
+            self.awtolat    = awydata['awtolat']     # latitude [deg]
+            self.awtolon    = awydata['awtolon']     # longitude [deg]
+            self.awid       = awydata['awid']        # airway identifier (string)
+            self.awndir     = awydata['awndir']      # number of directions (1 or 2)
+            self.awlowfl    = awydata['awlowfl']     # lower flight level (int)
+            self.awupfl     = awydata['awupfl']      # upper flight level (int)
 
-        # Get airpoint data
-        self.aptid     = aptdata['apid']      # 4 char identifier (string)
-        self.aptname   = aptdata['apname']    # full name
-        self.aptlat    = aptdata['aplat']     # latitude [deg]
-        self.aptlon    = aptdata['aplon']     # longitude [deg]
-        self.aptmaxrwy = aptdata['apmaxrwy']  # max runway length [m]
-        self.aptype    = aptdata['aptype']    # type (int, 1=large, 2=medium, 3=small)
-        self.aptco     = aptdata['apco']      # two char country code (string)
-        self.aptelev   = aptdata['apelev']    # field elevation in meters [m] above mean sea level
+            # Get airpoint data
+            self.aptid     = aptdata['apid']      # 4 char identifier (string)
+            self.aptname   = aptdata['apname']    # full name
+            self.aptlat    = aptdata['aplat']     # latitude [deg]
+            self.aptlon    = aptdata['aplon']     # longitude [deg]
+            self.aptmaxrwy = aptdata['apmaxrwy']  # max runway length [m]
+            self.aptype    = aptdata['aptype']    # type (int, 1=large, 2=medium, 3=small)
+            self.aptco     = aptdata['apco']      # two char country code (string)
+            self.aptelev   = aptdata['apelev']    # field elevation in meters [m] above mean sea level
 
-        # Get FIR data
-        self.fir      = firdata['fir']        # fir name
-        self.firlat0  = firdata['firlat0']    # start lat of a line of border
-        self.firlon0  = firdata['firlon0']    # start lon of a line of border
-        self.firlat1  = firdata['firlat1']    # end lat of a line of border
-        self.firlon1  = firdata['firlon1']    # end lon of a line of border
+            # Get FIR data
+            self.fir      = firdata['fir']        # fir name
+            self.firlat0  = firdata['firlat0']    # start lat of a line of border
+            self.firlon0  = firdata['firlon0']    # start lon of a line of border
+            self.firlat1  = firdata['firlat1']    # end lat of a line of border
+            self.firlon1  = firdata['firlon1']    # end lon of a line of border
 
-        # Get country code data
-        self.coname   = codata['coname']      # country full name
-        self.cocode2  = codata['cocode2']     # country code A2 (asscii2) 2 chars
-        self.cocode3  = codata['cocode3']     # country code A3 (asscii2) 3 chars
-        self.conr     = codata['conr']        # country icao number
+            # Get country code data
+            self.coname   = codata['coname']      # country full name
+            self.cocode2  = codata['cocode2']     # country code A2 (asscii2) 2 chars
+            self.cocode3  = codata['cocode3']     # country code A3 (asscii2) 3 chars
+            self.conr     = codata['conr']        # country icao number
 
-        self.rwythresholds = rwythresholds
+            self.rwythresholds = rwythresholds
 
     def defwpt(self,name=None,lat=None,lon=None,wptype=None):
 

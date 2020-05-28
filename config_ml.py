@@ -53,11 +53,16 @@ class Config:
         self.max_lon_gen = None             # Maximum lon for a/c generation
         self.min_dist = None                # Minimum distance between A/C
         self.max_dist = None                # Maximum distance between A/C (obs space)
-        self.lat_eham = None                # Latitude goal     (to be extended)
-        self.lon_eham = None                # Longitude goal    (to be extended)
         self.wpt_reached = None             # When a A/C is considered to have reached its goal (nm)
         self.los = None                     # When an A/C is considered to have a loss of seperation (nm)
+
+        # Destination settings
         self.spawn_separation = None
+        self.lat_eham = None                # Latitude goal     (to be extended)
+        self.lon_eham = None                # Longitude goal    (to be extended)
+        self.destination_distribution = None # If the destination should be randomly distributed, or an uniform distribution across all airports should be done. Either "random" or "uniform"
+        self.destination_hdg = None              # Use hdg limitations for each destination.
+        self.multi_destination = None       # Using multiple destinations or not
 
        # Trainer settings
         self.max_timesteps = None           # Max timesteps per episode
@@ -75,8 +80,14 @@ class Config:
 
 
     def check_constraints(self):
+        print('Check settings constraints')
         assert self.n_ac - self.n_neighbours >= 0, "Nr ac_neighbours should always at maximum be n_ac - 1"
         assert isinstance(self.save_file_name, str), 'save file naming should be string'
+        assert (self.destination_distribution == "random" or self.destination_distribution == "uniform"), \
+            "Wrong destination distribution given"
+        assert (self.destination_hdg is not False or self.destination_hdg is not True), 'settings has to be set.'
+        assert (self.multi_destination is not True or self.multi_destination is not False), 'settings has to be set'
+
 
     def check(self):
         prop = vars(self)
@@ -90,4 +101,5 @@ class Config:
         sv.close()
 
     def load_conf(self, save_file_name):
+        save_file_name = '/home/dennis/PycharmProjects/bluesky/' + save_file_name
         return pickle.load(open(save_file_name, 'rb'))

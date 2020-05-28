@@ -134,23 +134,35 @@ class CategoricalOrdinalTFP(TFActionDistribution):
         inputs = tf.reduce_sum(tf.math.log(inputs + 1e-8) * am_tf + tf.math.log(1 - inputs + 1e-8) * (1 - am_tf),
                                 axis=-1)
 
-        self.dist = tfp.distributions.Categorical(logits=inputs, dtype=tf.int64)
+        # self.dist = tfp.distributions.Categorical(logits=inputs, dtype=tf.int64)
         super().__init__(inputs, model)
 
     def deterministic_sample(self):
-        return self.dist.mode()
+        return tf.math.argmax(self.inputs, axis=1)
 
     def logp(self, x):
-        return self.dist.log_prob(x)
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=self.inputs, labels=tf.cast(x, tf.int64))
 
     def entropy(self):
-         return self.dist.entropy()
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        ea0 = tf.exp(a0)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=1)
 
     def kl(self, other):
-        return self.dist.kl_divergence(other.dist)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
+        ea0 = tf.exp(a0)
+        ea1 = tf.exp(a1)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
 
     def _build_sample_op(self):
-        return self.dist.sample()
+        return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
     @staticmethod
     def required_model_output_shape(action_space, model_config):
@@ -164,5 +176,54 @@ class CategoricalOrdinalTFP(TFActionDistribution):
                 if i + j <= bins - 1:
                     a[i, j] = 1.0
         return a
-
+#
+# class CategoricalOrdinalTFP(TFActionDistribution):
+#     """Categorical distribution for discrete action spaces."""
+#
+#     def __init__(self, inputs, model=None, temperature=1.0):
+#         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+#         # Allow softmax formula w/ temperature != 1.0:
+#         # Divide inputs by temperature.
+#         inputs = inputs / temperature
+#         inputs = tf.nn.sigmoid(inputs)  # of size [batchsize, num-actions*bins], initialized to be about uniform
+#         # output1 = tf.nn.softmax(inputs)
+#         #
+#         # inputs = tf.nn.sigmoid(inputs)
+#         #
+#         am_numpy = self.construct_mask(inputs.shape[-1])
+#         am_tf = tf.constant(am_numpy, dtype=tf.float32)
+#         inputs = tf.tile(tf.expand_dims(inputs, axis=-1), [1, 1, inputs.shape[-1]])
+#         inputs = tf.reduce_sum(tf.math.log(inputs + 1e-8) * am_tf + tf.math.log(1 - inputs + 1e-8) * (1 - am_tf),
+#                                 axis=-1)
+#
+#         self.dist = tfp.distributions.Categorical(logits=inputs, dtype=tf.int64)
+#         super().__init__(inputs, model)
+#
+#     def deterministic_sample(self):
+#         return self.dist.mode()
+#
+#     def logp(self, x):
+#         return self.dist.log_prob(x)
+#
+#     def entropy(self):
+#          return self.dist.entropy()
+#
+#     def kl(self, other):
+#         return self.dist.kl_divergence(other.dist)
+#
+#     def _build_sample_op(self):
+#         return self.dist.sample()
+#
+#     @staticmethod
+#     def required_model_output_shape(action_space, model_config):
+#         return action_space.n
+#
+#     @staticmethod
+#     def construct_mask(bins):
+#         a = np.zeros([bins, bins])
+#         for i in range(bins):
+#             for j in range(bins):
+#                 if i + j <= bins - 1:
+#                     a[i, j] = 1.0
+#         return a
 

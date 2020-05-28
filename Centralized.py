@@ -13,10 +13,6 @@ from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
 
 from config_ml import Config
-import logging
-
-
-# logging.basicConfig(filename='logoutpost.log', level=logging.DEBUG)
 
 settings = Config()
 settings = settings.load_conf('config_file')
@@ -28,93 +24,99 @@ class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
-        self.compute_central_vf = make_tf_callable(self.get_session(),dynamic_shape=True)(
+        self.compute_central_vf = make_tf_callable(self.get_session(), dynamic_shape=True)(
             self.model.central_value_function)
 
 def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=None, episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
-    # print('I AM HERE')
     if policy.loss_initialized():
         assert other_agent_batches is not None
-        # own_agent_id = sample_batch[SaAh yeahmpleBatch.INFOS][-1]['sequence'][0]
+        # new_obs_array = np.array([])
 
-        OppActionsArr = []
-        New_obs_list = []
-        New_obs_array = np.array([])
-        # if isinstance(sample_batch[SampleBatch.INFOS], np.ndarray):
-        for idx, value in enumerate(sample_batch[SampleBatch.INFOS]):
+        # Initiate frequently used values that stat consistent.
+        idx_insert = np.arange(9, 9 + settings.n_neighbours * 3, 3)
+
+        for idx_sample, value in enumerate(sample_batch[SampleBatch.INFOS]):
             if "sequence" in value:
+
+                # Make new array containing all neighbouring AC for this current observation. This is passed along with
+                # the info dict.
+                # Delete the first element, as it contains the agent ID of the currenct agent considered.
                 neighbours_ac = value['sequence'][1:]
-                # print(neighbours_ac)
-                OpponentActions = []
-                idx_insert = np.arange(8, 8 + settings.n_neighbours * 3, 3)
-                # print(idx_insert)
-                # idx_insert = idx_insert[:-1]
-                temp = sample_batch[SampleBatch.CUR_OBS][idx]
-                temp = np.append(temp, np.float32(0))
+                # idx_insert = np.arange(8, 8 + settings.n_neighbours * 3, 3)
+                # print('AgentIDinbatch:', sample_batch[SampleBatch.AGENT_INDEX][idx_sample])
+                # print('AgentIDinInfo', value['sequence'][0])
+                # temp = sample_batch[SampleBatch.CUR_OBS][idx]
+
+                # Create temporary array copies the current observations (without the opponent actions), and append
+                # a 0 at the end to be able to use np.insert.
+                temp = np.append(sample_batch[SampleBatch.CUR_OBS][idx_sample], np.float32(0))
+
+                # Now retrieve opponent actions, by looping over all the neighbour_ac agent ID's in the opponent_batch
+                # The sequence of neighbours_ac follows the same orderning used in the observation space.
+                # So this sequence is used to correctly place the opponent action behind the observation.
 
                 for idx_insert_idx, agentid in enumerate(neighbours_ac):
-                    # print('Print idx', idx_insert[idx_insert_idx])
-                    # print('Print sample batch', temp) #sample_batch[SampleBatch.CUR_OBS][idx])
-                    # print('Print transform', transform_action(other_agent_batches[agentid][1][SampleBatch.ACTIONS][idx]))
-                    # temp_action = transform_action(other_agent_batches[agentid][1][SampleBatch.ACTIONS][idx])
-                    temp = np.insert(temp, idx_insert[idx_insert_idx], transform_action(other_agent_batches[agentid][1][SampleBatch.ACTIONS][idx]))
-                    # New_obs_list.append(temp)
-                    OpponentActions.append(other_agent_batches[agentid][1][SampleBatch.ACTIONS][idx])
+                    temp = np.insert(temp, idx_insert[idx_insert_idx], transform_action(other_agent_batches[agentid][1][SampleBatch.ACTIONS][idx_sample]))
+
+                # New array contains as many actions as given by the amount of neighbours_ac, which is given by the
+                # amount of current active AC in the simulation. So if the amount of neighbours would drop below the
+                # value in the settings, the state space would not be the same. So padding is required.
+                # Padding is done by comparing the required state space size with the current created.
+                # Difference is padded with "fill"
 
                 if len(temp[:-1]) < max(idx_insert+1):
                     fill = max(idx_insert+1) - len(temp[:-1])
-                    fill_zero = np.full((1,fill), -1, dtype=np.float32)
+                    fill_zero = np.full((1, fill), -1, dtype=np.float32)
                     temp = np.append(temp, fill_zero)
-                # New_obs_list = np.append(New_obs_list, temp[:-1])
-                OppActionsArr.append(OpponentActions)
-                New_obs_list.append(temp[:-1])
-                # print('idxinsert', max(idx_insert))
-                # print(np.shape(temp[:-1]))
-                if idx == 0:
-                    New_obs_array = np.array([temp[:-1]])
-                else:
-                    New_obs_array = np.concatenate((New_obs_array, [temp[:-1]]), axis=0)
-            else:
-                # New_obs_list.append(sample_batch[SampleBatch.CUR_OBS][idx])
-                # if len(sample_batch[SampleBatch.CUR_OBS][idx]) < (5 + settings.n_neighbours * 3):
-                fill = (6 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx])
-                fill_zero = np.full((1, fill), -1, dtype=np.float32)
-                temp_2 = np.append(sample_batch[SampleBatch.CUR_OBS][idx], fill_zero)
-                if idx==0:
-                    New_obs_array = temp_2
-                else:
-                    New_obs_array = np.concatenate((New_obs_array, [temp_2]), axis=0)
-        # logger.debug(sample_batch["CUR_OBS_WITH_ACTION"])
-        # sample_batch[NEW_OBS_ACTION] = np.array([])
-        # print(sample_batch[NEW_OBS_ACTION])
 
-        # logging.debug("Sample batch")
-        # logging.debug(sample_batch)
-        # logging.debug(np.array(New_obs_list, dtype=np.float32))
-        # sample_batch[NEW_OBS_ACTION] = np.array(New_obs_list, dtype=np.float32)
-        # print(New_obs_array)
-        sample_batch[NEW_OBS_ACTION] = New_obs_array
-        # sample_batch[NEW_OBS_ACTION] = np.array(New_obs_list, dtype=np.float32)
-        # logging.debug("New obs action")
-        # logging.debug(sample_batch[NEW_OBS_ACTION])
+                # New_obs_list = np.append(New_obs_list, temp[:-1])
+
+                # Delete the last element, which was the padded 0 for the np.insert.
+                # New_obs_list.append(temp[:-1])
+
+                # First sample should create a new array, rest should be appended. (remember, this is the full sample
+                # batch). temp[:-1] is done to delete the additional 0 used to enable NP.INSERT to work.
+
+                if idx_sample == 0:
+                    new_obs_array = np.array([temp[:-1]])
+                else:
+                    new_obs_array = np.concatenate((new_obs_array, [temp[:-1]]), axis=0)
+            else:
+                # If sequence is not present in the info dict, this means that there is only 1 plane left.
+                # create required padding and send as observation.
+                fill = (7 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx_sample])
+                fill_zero = np.full((1, fill), -1, dtype=np.float32)
+                temp_2 = np.append(sample_batch[SampleBatch.CUR_OBS][idx_sample], fill_zero)
+
+                if idx_sample == 0:
+                    new_obs_array = temp_2
+                else:
+                    new_obs_array = np.concatenate((new_obs_array, [temp_2]), axis=0)
+
+        # Add new observations including actions to sample batch.
+        sample_batch[NEW_OBS_ACTION] = new_obs_array
+
+        # Calculated the predicted value function, and include in the batch.
         sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(sample_batch[NEW_OBS_ACTION])
+
     else:
-        # print('past here')
-        fake_size = 6 + settings.n_neighbours*3
+        # If policy is not initialized, create dummy batch.
+
+        fake_size = 7 + settings.n_neighbours*3
         sample_batch[NEW_OBS_ACTION] = np.array([])
         sample_batch[NEW_OBS_ACTION] = np.zeros((1, fake_size), dtype=np.float32)
-        # print(sample_batch[NEW_OBS_ACTION])
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
             sample_batch[SampleBatch.ACTIONS], dtype=np.float32)
-        # print(sample_batch[SampleBatch.VF_PREDS])
 
+    # Check if sample_batch is done to tidy up stuff.
     completed = sample_batch["dones"][-1]
     if completed:
         last_r = 0.0
     else:
         last_r = sample_batch[SampleBatch.VF_PREDS][-1]
 
+    # Compute advantages using the new observations.
     batch = compute_advantages(
         sample_batch,
         last_r,
@@ -142,15 +144,6 @@ def transform_action(action):
         action_hdg = 15
     return np.float32(action_hdg)
 
-def include_action_in_obs(obs, opponent_actions):
-    idx_insert = np.arange(7, 7 + settings.n_neighbours * 3, 3)
-    # for idx, actionlist in enumerate(opponent_action):
-    #     action_list_deg = list(map(transform_action, actionlist))
-    #     obs[idx] = np.insert(obs[idx], idx_insert[:-1], np.array(action_list_deg[:-1]))
-    #     obs[idx].append(action_list_deg[-1])
-    return
-
-
 def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
 
@@ -158,8 +151,6 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
     action_dist = dist_class(logits, model)
     policy.central_value_out = policy.model.central_value_function(
         train_batch[NEW_OBS_ACTION])
-
-
     adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
     policy.loss_obj = TFLoss(
         dist_class,
@@ -197,20 +188,26 @@ def central_vf_stats(policy, train_batch, grads):
             policy.central_value_out),
     }
 
-# print('Create CCPPO policy')
+def choose_optimizer(policy, config):
+    if True:
+        return tf.train.AdamOptimizer(policy.cur_lr)
+    elif False:
+        return tf.train.RMSPropOptimizer(policy.cur_lr)
+
+
 CCPPO = PPOTFPolicy.with_updates(
     name="CCPPO",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
     before_loss_init=setup_mixins,
     grad_stats_fn=central_vf_stats,
+    optimizer_fn=choose_optimizer,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         CentralizedValueMixin
     ])
-# print(CCPPO)
 
 def get_policy_class(config):
     return CCPPO
+
 CCTrainer = PPOTrainer.with_updates(name="CCPPOTrainer", default_policy=CCPPO, get_policy_class=get_policy_class)
-# print(CCTrainer)

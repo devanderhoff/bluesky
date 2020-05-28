@@ -200,6 +200,10 @@ class Simulation:
             bs.stack.stack(eventdata, sender_rte)
             event_processed = True
 
+        elif eventname == b'MLRESET':
+            self.reset()
+            event_processed = True
+
         elif eventname == b'BATCH':
             # We are in a batch simulation, and received an entire scenario. Assign it to the stack.
             self.reset()

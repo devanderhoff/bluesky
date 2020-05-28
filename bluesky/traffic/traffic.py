@@ -83,6 +83,7 @@ class Traffic(TrafficArrays):
             self.id      = []  # identifier (string)
             self.type    = []  # aircaft type (string)
             self.dest_temp = np.array([], dtype=np.int32)
+            self.dest_hdg = np.array([], dtype=np.int32)
 
             # Positions
             self.lat     = np.array([])  # latitude [deg]
@@ -184,7 +185,7 @@ class Traffic(TrafficArrays):
         self.translvl = 5000.*ft
 
     def create(self, n=1, actype="B744", acalt=None, acspd=None, dest=None,
-                aclat=None, aclon=None, achdg=None, acid=None):
+                aclat=None, aclon=None, achdg=None, acid=None, dest_hdg=None):
         """ Create multiple random aircraft in a specified area """
         area = bs.scr.getviewbounds()
         if acid is None:
@@ -256,6 +257,7 @@ class Traffic(TrafficArrays):
         self.id[-n:]   = acid
         self.type[-n:] = actype
         self.dest_temp[-n:] = dest
+        self.dest_hdg[-n:] = dest_hdg
 
         # Positions
         self.lat[-n:]  = aclat
