@@ -324,10 +324,10 @@ def init(startup_scnfile):
             "Set a custom color for an aircraft or shape",
         ],
         "CRE": [
-            "CRE acid,type,lat,lon,hdg,alt,spd",
-            "txt,txt,latlon,hdg,alt,spd",
-            lambda acid, actype, lat, lon, hdg, alt, spd: bs.traf.create(
-                1, actype, alt, spd, None, lat, lon, hdg, acid
+            "CRE acid,type,lat,lon,hdg,alt,spd,dest",
+            "txt,txt,latlon,hdg,alt,spd,txt",
+            lambda acid, actype, lat, lon, hdg, alt, spd, dest: bs.traf.create(
+                1, actype, alt, spd, lat, lon, hdg, acid, dest
             ),
             "Create an aircraft",
         ],

@@ -34,7 +34,7 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
         # new_obs_array = np.array([])
 
         # Initiate frequently used values that stat consistent.
-        idx_insert = np.arange(9, 9 + settings.n_neighbours * 3, 3)
+        idx_insert = np.arange(8, 8 + settings.n_neighbours * 3, 3)
 
         for idx_sample, value in enumerate(sample_batch[SampleBatch.INFOS]):
             if "sequence" in value:
@@ -85,7 +85,7 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
             else:
                 # If sequence is not present in the info dict, this means that there is only 1 plane left.
                 # create required padding and send as observation.
-                fill = (7 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx_sample])
+                fill = (6 + settings.n_neighbours * 3) - len(sample_batch[SampleBatch.CUR_OBS][idx_sample])
                 fill_zero = np.full((1, fill), -1, dtype=np.float32)
                 temp_2 = np.append(sample_batch[SampleBatch.CUR_OBS][idx_sample], fill_zero)
 
@@ -103,7 +103,7 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
     else:
         # If policy is not initialized, create dummy batch.
 
-        fake_size = 7 + settings.n_neighbours*3
+        fake_size = 6 + settings.n_neighbours*3
         sample_batch[NEW_OBS_ACTION] = np.array([])
         sample_batch[NEW_OBS_ACTION] = np.zeros((1, fake_size), dtype=np.float32)
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
@@ -128,19 +128,49 @@ def centralized_critic_postprocessing(policy,sample_batch,other_agent_batches=No
 
 def transform_action(action):
     action_hdg = 0
+    # if action == 0:
+    #     action_hdg = -15
+    # elif action == 1:
+    #     action_hdg = -10
+    # elif action == 2:
+    #     action_hdg = -5
+    # elif action == 3:
+    #     action_hdg = 0
+    # elif action == 4:
+    #     action_hdg = 5
+    # elif action == 5:
+    #     action_hdg = 10
+    # elif action == 6:
+    #     action_hdg = 15
     if action == 0:
         action_hdg = -15
     elif action == 1:
-        action_hdg = -10
+        action_hdg = -12
     elif action == 2:
-        action_hdg = -5
+        action_hdg = -10
     elif action == 3:
-        action_hdg = 0
+        action_hdg = -8
     elif action == 4:
-        action_hdg = 5
+        action_hdg = -6
     elif action == 5:
-        action_hdg = 10
+        action_hdg = -4
     elif action == 6:
+        action_hdg = -2
+    elif action == 7:
+        action_hdg = 0
+    elif action == 8:
+        action_hdg = 2
+    elif action == 9:
+        action_hdg = 4
+    elif action == 10:
+        action_hdg = 6
+    elif action == 11:
+        action_hdg = 8
+    elif action == 12:
+        action_hdg = 10
+    elif action == 13:
+        action_hdg = 12
+    elif action == 14:
         action_hdg = 15
     return np.float32(action_hdg)
 
@@ -172,6 +202,14 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         use_gae=policy.config["use_gae"])
 
     return policy.loss_obj.loss
+
+def calc_states(train_batch):
+    states = []
+    i = 0
+    while "state_in_{}".format(i) in train_batch:
+        states.append(train_batch["state_in_{}".format(i)])
+        i += 1
+    return states
 
 def setup_mixins(policy, obs_space, action_space, config):
     # copied from PPO

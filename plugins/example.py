@@ -3,8 +3,10 @@
 # Import the global bluesky objects. Uncomment the ones you need
 from bluesky import stack, settings, navdb, traf, sim, scr, tools
 import numpy as np
+from bluesky.tools import geo
+import csv
 
-import ExternalEnv
+# import ExternalEnv
 
 ### Initialization function of your plugin. Do not change the name of this
 ### function, as it is the way BlueSky recognises this file as a plugin.
@@ -63,20 +65,55 @@ def init_plugin():
 
 ### Periodic update functions that are called by the simulation. You can replace
 ### this by anything, so long as you communicate this in init_plugin
-
+first_time = True
+done_count = 0
 def update():
-    stack.stack('ECHO MY_PLUGIN update: creating a random aircraft')
-    stack.stack('MCRE 1')
-    stack.stack('hello')
+    global first_time, done, delete_dict, done_count
+    if first_time:
+        done = dict.fromkeys(traf.id)
+        delete_dict = dict.fromkeys(traf.id, False)
+        first_time = False
+
+    for id in traf.id:
+        if id not in done:
+            done[id] = False
+        if id not in delete_dict:
+            delete_dict[id] = False
+    dest_lat_lon = [(52.6, 4.73), (52.3, 4.36), (52.33, 5.19), (51.52, 5.33), (51.8, 5.06), (51.82, 5.75), (52.30, 6.0)]
+    # dest_lat_lon[-dest]
+
+    if done.keys():
+        for agent_id in done.keys():
+            # Initialize reward to 0.
+            done[agent_id] = False
+            # First check if goal area is reached
+            idx = traf.id2idx(agent_id)
+            dest = traf.dest_temp[idx]
+            dest_lat, dest_lon = dest_lat_lon[-dest]
+            dist = geo.kwikdist(traf.lat[idx], traf.lon[idx], dest_lat, dest_lon)
+            if dist <= 5:
+                done[agent_id] = True
+                done_count +=1
+
+        for agent_id in done.keys():
+            if agent_id in delete_dict:
+                if done[agent_id] and not delete_dict[agent_id]:
+                    traf.delete(traf.id2idx(agent_id))
+                    print('Deleted ', agent_id)
+                    delete_dict[agent_id] = True
+    save_metrics()
+    if done_count >= 125:
+        sim.reset()
+
+    return
 
 def preupdate():
-    #Create state
-    # state = np.array([traf.lat[0], traf.lon[0], traf.hdg[0]], traf.asas.dist[0])
-    # print(state)
-    pass
-
+    return
 def reset():
-    pass
+    global first_time_csv, crash_count
+    first_time_csv = True
+    crash_count = 0
+    return
 
 ### Other functions of your plugin
 def myfun(flag=True):
@@ -85,3 +122,15 @@ def myfun(flag=True):
 def retrieve_state():
 
     pass
+
+def save_metrics():
+    global first_time_csv
+    f = open('save.csv', 'a')
+    writer = csv.writer(f)
+    if first_time_csv:
+        # writer = csv.writer(f)
+        writer.writerow(['time', 'crashes', 'landed']) #crash_count, done_count-crash_count])
+        first_time_csv = False
+
+    writer.writerow([sim.simt, crash_count, done_count-crash_count])
+    return

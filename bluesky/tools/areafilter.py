@@ -20,11 +20,11 @@ def defineArea(areaname, areatype, coordinates, top=1e9, bottom=-1e9):
         else:
             return True, 'Currently defined shapes:\n' + \
                 ', '.join(areas)
-    if not coordinates:
-        if areaname in areas:
-            return True, str(areas[areaname])
-        else:
-            return False, f'Unknown shape: {areaname}'
+    # if not any(coordinates):
+    #     if areaname in areas:
+    #         return True, str(areas[areaname])
+    #     else:
+    #         return False, f'Unknown shape: {areaname}'
     if areatype == 'BOX':
         areas[areaname] = Box(areaname, coordinates, top, bottom)
     elif areatype == 'CIRCLE':
@@ -131,6 +131,6 @@ class Poly(Shape):
         self.border = Path(np.reshape(coordinates, (len(coordinates) // 2, 2)))
 
     def checkInside(self, lat, lon, alt):
-        points = np.vstack((lat,lon)).T
+        points = np.vstack((lat, lon)).T
         inside = np.all((self.border.contains_points(points), self.bottom <= alt, alt <= self.top), axis=0)
         return inside

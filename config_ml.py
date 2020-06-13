@@ -39,6 +39,7 @@ class Config:
         self.multiagent = None  # Flag for multiagent approach
         self.training_enabled = None  # Update of policy enabled/disabled
         self.server_port = None  # Listerning port for REST server (policy)
+        self.evaluate = None    # If True, do not reset environment. Used for execution of scenfiles.
 
         # Environment settings
         self.n_ac = None                    # Nr of aircraft created
@@ -53,7 +54,7 @@ class Config:
         self.max_lon_gen = None             # Maximum lon for a/c generation
         self.min_dist = None                # Minimum distance between A/C
         self.max_dist = None                # Maximum distance between A/C (obs space)
-        self.wpt_reached = None             # When a A/C is considered to have reached its goal (nm)
+        self.wpt_almost_reached = None             # When a A/C is considered to have reached its goal (nm)
         self.los = None                     # When an A/C is considered to have a loss of seperation (nm)
 
         # Destination settings
@@ -87,7 +88,7 @@ class Config:
             "Wrong destination distribution given"
         assert (self.destination_hdg is not False or self.destination_hdg is not True), 'settings has to be set.'
         assert (self.multi_destination is not True or self.multi_destination is not False), 'settings has to be set'
-
+        # assert (self.evaluate is True and self.training_enabled is False), 'If evaluating, disable training'
 
     def check(self):
         prop = vars(self)

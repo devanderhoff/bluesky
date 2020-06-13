@@ -184,12 +184,13 @@ class Traffic(TrafficArrays):
         # Reset transition level to default value
         self.translvl = 5000.*ft
 
-    def create(self, n=1, actype="B744", acalt=None, acspd=None, dest=None,
-                aclat=None, aclon=None, achdg=None, acid=None, dest_hdg=None):
+    def create(self, n=1, actype='B737-800', acalt=5000 * ft, acspd=250*kts, aclat=None, aclon=None, achdg=None, acid=None, dest=None):
         """ Create multiple random aircraft in a specified area """
         area = bs.scr.getviewbounds()
-        if acid is None:
-            idtmp = chr(randint(65, 90)) + chr(randint(65, 90)) + '{:>05}'
+        # acid = None
+        if acid is None or acid == 'NONE':
+            # print('aids')
+            idtmp = chr(randint(65, 90)) + chr(randint(65, 90)) + chr(randint(65, 90)) + '{:>05}'
             acid = [idtmp.format(i) for i in range(n)]
 
         elif isinstance(acid, str):
@@ -241,7 +242,9 @@ class Traffic(TrafficArrays):
             acspd = np.array(n * [acspd])
 
         actype = n * [actype] if isinstance(actype, str) else actype
-        dest = n * [dest] if isinstance(dest, str) else dest
+        # dest = n * [dest] if isinstance(dest, str) else dest
+        if dest is None:
+            dest = np.random.randint(1, 7, n)
 
         # SAVEIC: save cre command when filled in
         # Special provision in case SAVEIC is on: then save individual CRE commands
@@ -257,7 +260,7 @@ class Traffic(TrafficArrays):
         self.id[-n:]   = acid
         self.type[-n:] = actype
         self.dest_temp[-n:] = dest
-        self.dest_hdg[-n:] = dest_hdg
+        # self.dest_hdg[-n:] = dest_hdg
 
         # Positions
         self.lat[-n:]  = aclat
